@@ -1,7 +1,7 @@
 {
   "id": "brain-ask",
   "name": "Brain Operator",
-  "version": "0.6.1",
+  "version": "0.6.5",
   "minAppVersion": "1.4.0",
   "description": "Agent DevTools for local AI developers using Claude Code and Codex with markdown vaults. Answer Trace shows searched/read/cited/missing context; Agent Receipts export runs as Markdown/JSON; Safe Apply blocks dirty out-of-scope edits; handoffs are fenced as untrusted structured data. Technical preview.",
   "author": "Ege Deniz",

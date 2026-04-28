@@ -6,21 +6,288 @@ const fs = require("fs");
 const os = require("os");
 const pathMod = require("path");
 const crypto = require("crypto");
-const {
-  DEFAULT_CATALOG_LIMIT,
-  buildAgentTrace,
-  renderAgentTraceMarkdown,
-  renderAgentTraceJson,
-  buildAgentReceipt,
-  renderAgentReceiptMarkdown,
-  renderAgentReceiptJson,
-  capCatalogEntries,
-  buildCatalogPromptBlock,
-  parseHandoffEntries,
-  dirtyScopeViolations,
-  getAskPermissionMode,
-  safeParseStreamJsonLine,
-} = require("./schemas");
+
+try {
+// Obsidian evaluates plugin main.js without Node resolving relative requires
+// from the plugin folder. Keep the artifact schemas inlined in main.js;
+// schemas.js remains as the source module for non-Obsidian tooling/tests.
+const SCHEMA_VERSION = 1;
+const TRACE_SCHEMA = "brain-operator.agent-trace";
+const RECEIPT_SCHEMA = "brain-operator.agent-receipt";
+const DEFAULT_CATALOG_LIMIT = 250;
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function cleanText(value, maxLen) {
+  if (value == null) return "";
+  const max = maxLen || 1000;
+  return String(value).replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function uniqueStrings(values, limit) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const s = cleanText(value, 1000);
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+    if (limit && out.length >= limit) break;
+  }
+  return out;
+}
+
+function normalizeSearches(values) {
+  const out = [];
+  for (const value of Array.isArray(values) ? values : []) {
+    if (typeof value === "string") {
+      const query = cleanText(value, 500);
+      if (query) out.push({ kind: "unknown", query });
+      continue;
+    }
+    if (value && typeof value === "object") {
+      const kind = cleanText(value.kind || "unknown", 80) || "unknown";
+      const query = cleanText(value.query || value.pattern || "", 500);
+      if (query) out.push({ kind, query });
+    }
+  }
+  return out;
+}
+
+function capCatalogEntries(entries, maxEntries) {
+  const list = Array.isArray(entries) ? entries : [];
+  const limit = Math.max(0, Number.isFinite(Number(maxEntries)) ? Number(maxEntries) : DEFAULT_CATALOG_LIMIT);
+  const capped = list.slice(0, limit);
+  return {
+    entries: capped,
+    total: list.length,
+    included: capped.length,
+    omitted: Math.max(0, list.length - capped.length),
+  };
+}
+
+function buildCatalogPromptBlock(entries, maxEntries) {
+  const capped = capCatalogEntries(entries, maxEntries);
+  const text = capped.entries
+    .map((entry) => {
+      if (typeof entry === "string") return entry;
+      if (entry && entry.meta) return `${entry.path}  ${entry.meta}`;
+      return entry && entry.path ? entry.path : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+  return { ...capped, text };
+}
+
+function buildAgentTrace(input) {
+  const trace = input || {};
+  const catalogInput = trace.catalog || {};
+  const total = Number.isFinite(Number(catalogInput.total))
+    ? Number(catalogInput.total)
+    : Number(trace.catalogCount || 0);
+  const included = Number.isFinite(Number(catalogInput.included))
+    ? Number(catalogInput.included)
+    : total;
+  const omitted = Number.isFinite(Number(catalogInput.omitted))
+    ? Number(catalogInput.omitted)
+    : Math.max(0, total - included);
+  return {
+    schema: TRACE_SCHEMA,
+    version: SCHEMA_VERSION,
+    runId: cleanText(trace.runId || `trace-${Date.now()}`, 120),
+    agent: cleanText(trace.agent || "claude", 80),
+    mode: cleanText(trace.mode || "ask", 80),
+    query: cleanText(trace.query || "", 2000),
+    catalog: { total, included, omitted },
+    searched: normalizeSearches(trace.searched),
+    read: uniqueStrings(trace.read, 200),
+    cited: uniqueStrings(trace.cited, 200),
+    missing: uniqueStrings(trace.missing, 200),
+    warnings: uniqueStrings(trace.warnings, 50),
+    createdAt: cleanText(trace.createdAt || nowIso(), 80),
+  };
+}
+
+function markdownList(values, fallback) {
+  const list = Array.isArray(values) ? values : [];
+  if (!list.length) return `- ${fallback || "none"}`;
+  return list.map((value) => `- ${String(value)}`).join("\n");
+}
+
+function renderAgentTraceMarkdown(traceInput) {
+  const trace = buildAgentTrace(traceInput);
+  const searched = trace.searched.length
+    ? trace.searched.map((item) => `- ${item.kind}: ${item.query}`).join("\n")
+    : "- none";
+  return [
+    "# Agent Trace",
+    "",
+    `- schema: ${trace.schema}@${trace.version}`,
+    `- runId: ${trace.runId}`,
+    `- agent: ${trace.agent}`,
+    `- mode: ${trace.mode}`,
+    `- createdAt: ${trace.createdAt}`,
+    `- catalog: ${trace.catalog.total} total, ${trace.catalog.included} included, ${trace.catalog.omitted} omitted`,
+    "",
+    "## Query",
+    trace.query || "(empty)",
+    "",
+    "## Searched",
+    searched,
+    "",
+    "## Read",
+    markdownList(trace.read, "none"),
+    "",
+    "## Cited",
+    markdownList(trace.cited, "none"),
+    "",
+    "## Missing",
+    markdownList(trace.missing, "none"),
+    "",
+    "## Warnings",
+    markdownList(trace.warnings, "none"),
+    "",
+  ].join("\n");
+}
+
+function renderAgentTraceJson(traceInput) {
+  return JSON.stringify(buildAgentTrace(traceInput), null, 2);
+}
+
+function buildAgentReceipt(input) {
+  const receipt = input || {};
+  return {
+    schema: RECEIPT_SCHEMA,
+    version: SCHEMA_VERSION,
+    receiptId: cleanText(receipt.receiptId || `receipt-${Date.now()}`, 120),
+    trace: buildAgentTrace(receipt.trace || {}),
+    changedFiles: uniqueStrings(receipt.changedFiles, 200),
+    allowedPaths: uniqueStrings(receipt.allowedPaths, 200),
+    testsRun: Array.isArray(receipt.testsRun)
+      ? receipt.testsRun.map((test) => ({
+          command: cleanText(test && test.command, 500),
+          exitCode: Number.isFinite(Number(test && test.exitCode)) ? Number(test.exitCode) : null,
+          summary: cleanText(test && test.summary, 500),
+        })).filter((test) => test.command || test.summary)
+      : [],
+    verification: receipt.verification && typeof receipt.verification === "object"
+      ? {
+          status: cleanText(receipt.verification.status || "unknown", 80) || "unknown",
+          warnings: uniqueStrings(receipt.verification.warnings, 50),
+        }
+      : { status: "unknown", warnings: [] },
+    handoff: receipt.handoff && typeof receipt.handoff === "object"
+      ? {
+          summary: cleanText(receipt.handoff.summary, 1000),
+          nextStep: cleanText(receipt.handoff.nextStep || receipt.handoff.next_step, 1000),
+        }
+      : { summary: "", nextStep: "" },
+    status: cleanText(receipt.status || "unknown", 80) || "unknown",
+    createdAt: cleanText(receipt.createdAt || nowIso(), 80),
+  };
+}
+
+function renderAgentReceiptMarkdown(receiptInput) {
+  const receipt = buildAgentReceipt(receiptInput);
+  const tests = receipt.testsRun.length
+    ? receipt.testsRun.map((test) => `- ${test.command || test.summary}${test.exitCode == null ? "" : ` (exit ${test.exitCode})`}`).join("\n")
+    : "- none";
+  return [
+    "# Agent Receipt",
+    "",
+    `- schema: ${receipt.schema}@${receipt.version}`,
+    `- receiptId: ${receipt.receiptId}`,
+    `- status: ${receipt.status}`,
+    `- createdAt: ${receipt.createdAt}`,
+    "",
+    "## Trace",
+    `- runId: ${receipt.trace.runId}`,
+    `- agent: ${receipt.trace.agent}`,
+    `- mode: ${receipt.trace.mode}`,
+    `- missing refs: ${receipt.trace.missing.length}`,
+    "",
+    "## Changed Files",
+    markdownList(receipt.changedFiles, "none"),
+    "",
+    "## Allowed Paths",
+    markdownList(receipt.allowedPaths, "none"),
+    "",
+    "## Tests",
+    tests,
+    "",
+    "## Verification",
+    `- status: ${receipt.verification.status}`,
+    markdownList(receipt.verification.warnings, "no warnings"),
+    "",
+    "## Handoff",
+    `- summary: ${receipt.handoff.summary || "none"}`,
+    `- next: ${receipt.handoff.nextStep || "none"}`,
+    "",
+    "## Trace Markdown",
+    "",
+    renderAgentTraceMarkdown(receipt.trace),
+  ].join("\n");
+}
+
+function renderAgentReceiptJson(receiptInput) {
+  return JSON.stringify(buildAgentReceipt(receiptInput), null, 2);
+}
+
+function parseHandoffEntries(blockText) {
+  if (!blockText) return [];
+  const content = String(blockText).trim();
+  if (!content) return [];
+  const chunks = content.split(/\r?\n(?=## \[)/).map((chunk) => chunk.trim()).filter(Boolean);
+  const entries = [];
+  for (const chunk of chunks) {
+    const lines = chunk.split(/\r?\n/);
+    const header = lines.shift() || "";
+    const headerMatch = header.match(/^## \[([^\]]+)\]\s+(.+?)\s+·\s+(.+)$/);
+    const entry = headerMatch
+      ? {
+          timestamp: cleanText(headerMatch[1], 80),
+          agent: cleanText(headerMatch[2], 80),
+          mode: cleanText(headerMatch[3], 80),
+        }
+      : { unparsed: true, raw: cleanText(chunk, 2000) };
+    for (const line of lines) {
+      const match = line.match(/^-\s+([A-Za-z0-9_]+):\s*(.*)$/);
+      if (!match) continue;
+      const key = match[1];
+      const value = cleanText(match[2], 2000);
+      if (key === "targets") entry.targets = value ? value.split(",").map((s) => cleanText(s, 500)).filter(Boolean) : [];
+      else if (key === "scope_break") entry.scope_break = /^yes$/i.test(value);
+      else entry[key] = value;
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+
+function dirtyScopeViolations(dirtyPaths, allowedPaths) {
+  const allowed = new Set(uniqueStrings(allowedPaths, 500));
+  return uniqueStrings(dirtyPaths, 1000).filter((path) => !allowed.has(path));
+}
+
+function getAskPermissionMode(_settings) {
+  return "plan";
+}
+
+function safeParseStreamJsonLine(line) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed) return { ok: false, empty: true };
+  try {
+    return { ok: true, event: JSON.parse(trimmed) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `parse error: ${error.message}`,
+      snippet: trimmed.slice(0, 200),
+    };
+  }
+}
 
 const DEFAULT_SETTINGS = {
   claudeBinPath: "",
@@ -40,6 +307,9 @@ const DEFAULT_SETTINGS = {
   allowedTools: "Read,Grep,Glob",
   evolveKeyPages: "wiki/index.md,wiki/log.md,wiki/operating/Project Triage.md,wiki/projects/Live Artifacts.md,wiki/_proposals/queue.md,wiki/operating/Decision Log.md",
   pulseRecentCount: 8,
+  githubOwner: "",
+  githubRepoName: "",
+  githubRepoVisibility: "private",
   // v0.5.6: cost-safety cap on Ask. 12 tool-use turns is generous (most
   // legitimate Asks finish in 4-6) but prevents a runaway prompt from
   // burning subscription quota. Power users can raise this in settings.
@@ -127,9 +397,12 @@ function codexState(settings) {
 
 function codexVersion(binPath) {
   try {
-    const out = cp.execSync(`${JSON.stringify(binPath)} --version`, {
+    // v0.6.5 — execFileSync (not execSync) so the user-controlled binPath
+    // cannot break out of a shell quote via $(...) or backticks.
+    const out = cp.execFileSync(binPath, ["--version"], {
       encoding: "utf8",
       timeout: 1500,
+      stdio: ["ignore", "pipe", "pipe"],
     });
     return out.trim();
   } catch {
@@ -269,6 +542,254 @@ function runGit(vaultPath, args, timeoutMs) {
   }
 }
 
+function runGitRaw(vaultPath, args, timeoutMs) {
+  const bin = detectGitBinary();
+  if (!bin) {
+    return {
+      ok: false,
+      reason: "no-binary",
+      detail: "git executable not found on PATH (checked /opt/homebrew/bin, /usr/local/bin, /usr/bin, and shell which).",
+    };
+  }
+  if (!vaultPath) {
+    return { ok: false, reason: "failed", detail: "vault path unavailable" };
+  }
+  try {
+    const out = cp.execFileSync(bin, args, {
+      cwd: vaultPath,
+      encoding: "utf8",
+      timeout: timeoutMs || 5000,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: Object.assign({}, process.env, { LC_ALL: "C", LANG: "C" }),
+    });
+    return { ok: true, stdout: out };
+  } catch (e) {
+    const stderr = (e && e.stderr) ? String(e.stderr) : "";
+    const msg = stderr || (e && e.message) || "unknown error";
+    return { ok: false, reason: "failed", detail: msg.trim() };
+  }
+}
+
+const COMMON_GH_PATHS = [
+  "/opt/homebrew/bin/gh",
+  "/usr/local/bin/gh",
+  "/usr/bin/gh",
+];
+
+let _ghBinCache;
+function detectGhBinary() {
+  if (_ghBinCache !== undefined) return _ghBinCache;
+  for (const p of COMMON_GH_PATHS) {
+    try {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        _ghBinCache = p;
+        return p;
+      }
+    } catch {
+      // skip
+    }
+  }
+  for (const cmd of ["zsh -ic 'which gh'", "bash -ic 'which gh'", "which gh"]) {
+    try {
+      const out = cp.execSync(cmd, {
+        encoding: "utf8",
+        timeout: 2500,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      const p = (out || "").trim().split("\n").pop().trim();
+      if (p && p.startsWith("/") && fs.existsSync(p)) {
+        _ghBinCache = p;
+        return p;
+      }
+    } catch {
+      // try next
+    }
+  }
+  _ghBinCache = null;
+  return null;
+}
+
+function runGh(args, timeoutMs, cwd) {
+  const bin = detectGhBinary();
+  if (!bin) {
+    return {
+      ok: false,
+      reason: "no-binary",
+      detail: "GitHub CLI (`gh`) not found. Install GitHub CLI, then authenticate with `gh auth login`.",
+    };
+  }
+  try {
+    const out = cp.execFileSync(bin, args, {
+      cwd: cwd || os.homedir(),
+      encoding: "utf8",
+      timeout: timeoutMs || 8000,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: Object.assign({}, process.env, { LC_ALL: "C", LANG: "C" }),
+    });
+    return { ok: true, stdout: out };
+  } catch (e) {
+    const stderr = (e && e.stderr) ? String(e.stderr) : "";
+    const msg = stderr || (e && e.message) || "unknown error";
+    return { ok: false, reason: "failed", detail: msg.trim() };
+  }
+}
+
+function ghAuthState() {
+  const res = runGh(["auth", "status", "--hostname", "github.com"], 5000);
+  if (res.ok) return { ok: true, detail: (res.stdout || "authenticated").trim() };
+  return { ok: false, reason: res.reason, detail: res.detail };
+}
+
+function ghCurrentUser() {
+  const res = runGh(["api", "user", "--jq", ".login"], 5000);
+  if (!res.ok) return null;
+  const login = (res.stdout || "").trim();
+  return sanitizeGitHubOwner(login);
+}
+
+function slugifyGitHubRepoName(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  const cleaned = raw
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/[-_.]{2,}/g, "-")
+    .replace(/^[-_.]+|[-_.]+$/g, "")
+    .slice(0, 100);
+  return cleaned || "brain-vault";
+}
+
+function sanitizeGitHubOwner(value) {
+  const raw = String(value || "").trim();
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(raw)) return "";
+  return raw;
+}
+
+function githubRepoFullName(owner, repoName) {
+  const safeOwner = sanitizeGitHubOwner(owner);
+  const safeRepo = slugifyGitHubRepoName(repoName);
+  if (!safeOwner || !safeRepo) return null;
+  return `${safeOwner}/${safeRepo}`;
+}
+
+function defaultGitHubRepoName(vaultPath) {
+  return slugifyGitHubRepoName(pathMod.basename(vaultPath || "brain-vault"));
+}
+
+function parseGitHubRemoteUrl(url) {
+  const raw = String(url || "").trim();
+  let match = raw.match(/^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?$/i);
+  if (!match) {
+    match = raw.match(/^git@github\.com:([^/\s]+)\/([^/\s]+?)(?:\.git)?$/i);
+  }
+  if (!match) {
+    match = raw.match(/^ssh:\/\/git@github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?$/i);
+  }
+  if (!match) return null;
+  const owner = sanitizeGitHubOwner(match[1]);
+  const repo = slugifyGitHubRepoName(match[2]);
+  return owner && repo ? { owner, repo, fullName: `${owner}/${repo}` } : null;
+}
+
+function getGitHubConnectionSnapshot(vaultPath) {
+  const gitFound = !!detectGitBinary();
+  const ghFound = !!detectGhBinary();
+  const repoProbe = gitFound
+    ? runGitRaw(vaultPath, ["rev-parse", "--is-inside-work-tree"], 1500)
+    : { ok: false, reason: "no-binary", detail: "git not found" };
+  const isRepo = repoProbe.ok;
+  const branchRes = isRepo ? runGitRaw(vaultPath, ["branch", "--show-current"], 1500) : null;
+  const headRes = isRepo ? runGitRaw(vaultPath, ["rev-parse", "--verify", "HEAD"], 1500) : null;
+  const statusRes = isRepo ? runGitRaw(vaultPath, ["status", "--porcelain"], 3000) : null;
+  const originRes = isRepo ? runGitRaw(vaultPath, ["remote", "get-url", "origin"], 1500) : null;
+  const auth = ghFound ? ghAuthState() : { ok: false, reason: "no-binary", detail: "GitHub CLI (`gh`) not found." };
+  const origin = originRes && originRes.ok ? originRes.stdout.trim() : "";
+  return {
+    gitFound,
+    ghFound,
+    ghAuthenticated: !!(auth && auth.ok),
+    ghDetail: auth ? auth.detail : "",
+    isRepo,
+    branch: branchRes && branchRes.ok ? branchRes.stdout.trim() : "",
+    hasHead: !!(headRes && headRes.ok),
+    dirtyCount: statusRes && statusRes.ok
+      ? statusRes.stdout.split(/\r?\n/).filter(Boolean).length
+      : 0,
+    origin,
+    originRepo: parseGitHubRemoteUrl(origin),
+  };
+}
+
+const GITHUB_SECRET_PATTERNS = [
+  /sk-proj-[A-Za-z0-9_-]{20,}/,
+  /sk-ant-[A-Za-z0-9_-]{20,}/,
+  /gh[pousr]_[A-Za-z0-9_]{20,}/,
+  /github_pat_[A-Za-z0-9_]{20,}/,
+  /xox[baprs]-[A-Za-z0-9-]{20,}/,
+  /AKIA[0-9A-Z]{16}/,
+  /-----BEGIN (RSA|OPENSSH|PRIVATE) KEY-----/,
+];
+
+function scanVaultForLikelySecrets(vaultPath) {
+  const hits = [];
+  const skipDirs = new Set([".git", "node_modules", ".obsidian/cache", ".trash"]);
+  const binaryExt = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".zip", ".gz", ".mp3", ".mp4", ".mov", ".woff", ".woff2"]);
+  const visit = (dir) => {
+    if (hits.length >= 20) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (hits.length >= 20) return;
+      const full = pathMod.join(dir, entry.name);
+      const rel = pathMod.relative(vaultPath, full).replace(/\\/g, "/");
+      if (entry.isDirectory()) {
+        if (skipDirs.has(rel) || skipDirs.has(entry.name)) continue;
+        visit(full);
+      } else if (entry.isFile()) {
+        if (entry.name === "data.json" || binaryExt.has(pathMod.extname(entry.name).toLowerCase())) continue;
+        let stat;
+        try { stat = fs.statSync(full); } catch { continue; }
+        if (stat.size > 1024 * 1024) continue;
+        let text;
+        try { text = fs.readFileSync(full, "utf8"); } catch { continue; }
+        for (const pattern of GITHUB_SECRET_PATTERNS) {
+          if (pattern.test(text)) {
+            hits.push(rel);
+            break;
+          }
+        }
+      }
+    }
+  };
+  visit(vaultPath);
+  return Array.from(new Set(hits));
+}
+
+function ensureVaultGitignore(vaultPath) {
+  const file = pathMod.join(vaultPath, ".gitignore");
+  const required = [
+    ".DS_Store",
+    ".trash/",
+    ".obsidian/workspace.json",
+    ".obsidian/workspace-mobile.json",
+    ".obsidian/plugins/brain-ask/data.json",
+  ];
+  let existing = "";
+  try {
+    if (fs.existsSync(file)) existing = fs.readFileSync(file, "utf8");
+  } catch {
+    existing = "";
+  }
+  const lines = new Set(existing.split(/\r?\n/).map((line) => line.trim()).filter(Boolean));
+  const missing = required.filter((line) => !lines.has(line));
+  if (missing.length === 0) return { ok: true, changed: false };
+  const prefix = existing && !existing.endsWith("\n") ? "\n" : "";
+  fs.writeFileSync(file, existing + prefix + missing.join("\n") + "\n");
+  return { ok: true, changed: true };
+}
+
 // v0.5.6: schema-validate the parsed plan-json object. Returns the
 // normalized shape if valid, null if not. Mirrors the rigor of
 // parseEvolveJson / parseShipJson — closes the V49 audit Smell 3 brittle-
@@ -294,16 +815,41 @@ function parsePlanJsonShape(obj) {
   return { targets, ambiguity: amb, risk };
 }
 
+// v0.6.5 — auth probe.
+// Uses execFileSync so a `$(…)` or backtick in `binPath` (settable from
+// plugin Settings, persisted in data.json) cannot break out of the shell
+// quote and execute commands during preflight. Tries JSON first because
+// modern CLIs print JSON; falls back to a text match for older CLIs that
+// print human-readable status. Both shapes are normalized to the same
+// {loggedIn, authenticated} contract the rest of the plugin reads.
 function checkClaudeAuth(binPath) {
+  let out;
   try {
-    const out = cp.execSync(`${JSON.stringify(binPath)} auth status --output-format json`, {
+    out = cp.execFileSync(binPath, ["auth", "status"], {
       encoding: "utf8",
       timeout: 3000,
+      stdio: ["ignore", "pipe", "pipe"],
     });
-    return JSON.parse(out);
   } catch {
     return null;
   }
+  if (typeof out !== "string" || out.length === 0) return null;
+  const trimmed = out.trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object") {
+        const ok = parsed.loggedIn === true || parsed.authenticated === true;
+        return { ...parsed, loggedIn: ok, authenticated: ok };
+      }
+    } catch {
+      // fall through to text match
+    }
+  }
+  if (/\b(logged in|authenticated|signed in)\b/i.test(trimmed)) {
+    return { loggedIn: true, authenticated: true, raw: trimmed };
+  }
+  return { loggedIn: false, authenticated: false, raw: trimmed };
 }
 
 // v0.5.2 — preflight before any modal that spawns claude.
@@ -334,7 +880,7 @@ function preflightClaude(plugin) {
     // fall through to auth check
   }
   const auth = checkClaudeAuth(bin);
-  if (!auth || auth.authenticated === false) {
+  if (!auth || (auth.loggedIn !== true && auth.authenticated !== true)) {
     return {
       ok: false,
       reason: "Claude Code is not authenticated",
@@ -367,6 +913,24 @@ function vaultRootPath(app) {
     return adapter.getBasePath();
   }
   return null;
+}
+
+function writeLoadFailureLog(app, err) {
+  try {
+    const root = vaultRootPath(app);
+    const stack = err && err.stack ? err.stack : String(err);
+    const out = [
+      `[${new Date().toISOString()}] Brain Operator failed to load`,
+      stack,
+      "",
+    ].join("\n");
+    fs.writeFileSync(pathMod.join(__dirname, "load-error.log"), out, "utf8");
+    if (root) {
+      fs.writeFileSync(pathMod.join(root, ".obsidian/plugins/brain-ask/load-error.log"), out, "utf8");
+    }
+  } catch (logErr) {
+    console.warn("[Brain Operator] could not write load-error.log", logErr);
+  }
 }
 
 // ============================================================
@@ -795,6 +1359,7 @@ class BootstrapModal extends obsidian.Modal {
 
 class BrainAskPlugin extends obsidian.Plugin {
   async onload() {
+    try {
     await this.loadSettings();
     if (!this.settings.claudeBinPath) {
       const detected = detectClaudeBinary();
@@ -853,6 +1418,12 @@ class BrainAskPlugin extends obsidian.Plugin {
       id: "pulse-agents",
       name: "Agent Pulse — Claude + Codex timeline",
       callback: () => new AgentPulseModal(this.app, this).open(),
+    });
+
+    this.addCommand({
+      id: "github-connect",
+      name: "GitHub Connect — setup vault remote",
+      callback: () => new GitHubConnectModal(this.app, this).open(),
     });
 
     this.addCommand({
@@ -974,6 +1545,9 @@ class BrainAskPlugin extends obsidian.Plugin {
           case "pulse":
           case "agent-pulse":
             new AgentPulseModal(this.app, this).open(); break;
+          case "github":
+          case "github-connect":
+            new GitHubConnectModal(this.app, this).open(); break;
           case "quick":
             new QuickModeModal(this.app, this).open(); break;
           case "decide":
@@ -1007,6 +1581,16 @@ class BrainAskPlugin extends obsidian.Plugin {
     });
 
     this.addSettingTab(new BrainAskSettingTab(this.app, this));
+    } catch (err) {
+      console.error("[Brain Operator] failed to load", err);
+      writeLoadFailureLog(this.app, err);
+      try {
+        new obsidian.Notice(`Brain Operator failed to load: ${err && err.message ? err.message : err}`, 10000);
+      } catch (_) {
+        // Obsidian may be partially initialized; keep the original failure.
+      }
+      throw err;
+    }
   }
 
   async loadSettings() {
@@ -1945,6 +2529,51 @@ class BrainAskSettingTab extends obsidian.PluginSettingTab {
             this.plugin.settings.pulseRecentCount = v;
             await this.plugin.saveSettings();
           }),
+      );
+
+    containerEl.createEl("h3", { text: "GitHub Connect" });
+
+    new obsidian.Setting(containerEl)
+      .setName("Default GitHub owner")
+      .setDesc("Username or org used by GitHub Connect. Leave blank to auto-detect after `gh auth login`.")
+      .addText((text) =>
+        text
+          .setPlaceholder("github-user-or-org")
+          .setValue(this.plugin.settings.githubOwner || "")
+          .onChange(async (v) => {
+            this.plugin.settings.githubOwner = v.trim();
+            await this.plugin.saveSettings();
+          }),
+      )
+      .addButton((btn) =>
+        btn.setButtonText("Detect").onClick(async () => {
+          const user = ghCurrentUser();
+          if (user) {
+            this.plugin.settings.githubOwner = user;
+            await this.plugin.saveSettings();
+            new obsidian.Notice(`GitHub owner: ${user}`);
+            this.display();
+          } else {
+            new obsidian.Notice("Could not detect GitHub user. Run `gh auth login` first.");
+          }
+        }),
+      );
+
+    new obsidian.Setting(containerEl)
+      .setName("Default repo visibility")
+      .setDesc("Private is the safe default for personal vaults.")
+      .addDropdown((dd) =>
+        dd
+          .addOption("private", "Private")
+          .addOption("public", "Public")
+          .setValue(this.plugin.settings.githubRepoVisibility || "private")
+          .onChange(async (v) => {
+            this.plugin.settings.githubRepoVisibility = v === "public" ? "public" : "private";
+            await this.plugin.saveSettings();
+          }),
+      )
+      .addButton((btn) =>
+        btn.setButtonText("Open Connect").onClick(() => new GitHubConnectModal(this.app, this.plugin).open()),
       );
 
     if (this.plugin.settings.lastSessionId) {
@@ -3565,6 +4194,17 @@ class AgentPulseModal extends obsidian.Modal {
     head.setText("git");
     head.createEl("span", { cls: "brain-ask-pulse-section-hint", text: "vault working tree" });
 
+    const actions = section.createEl("div", { cls: "brain-ask-pulse-actions" });
+    const connect = actions.createEl("button", {
+      cls: "brain-ask-trace-action-btn",
+      text: "GitHub Connect",
+      attr: { type: "button" },
+    });
+    connect.addEventListener("click", () => {
+      this.close();
+      new GitHubConnectModal(this.app, this.plugin).open();
+    });
+
     const vaultPath = vaultRootPath(this.app);
     if (!vaultPath) {
       section.createEl("div", { cls: "brain-ask-pulse-empty", text: "vault path unavailable" });
@@ -3612,6 +4252,304 @@ class AgentPulseModal extends obsidian.Modal {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
     return `${(bytes / 1024 / 1024 / 1024).toFixed(1)}GB`;
+  }
+}
+
+/* -----------------------------------------------------------------
+ * GitHubConnectModal — guarded vault-to-GitHub setup.
+ * Automates what can be automated: git init, private repo creation,
+ * remote wiring, commit, and push via the GitHub CLI. It does NOT store
+ * GitHub credentials or fake OAuth; the user must approve `gh auth`.
+ * ---------------------------------------------------------------*/
+
+class GitHubConnectModal extends obsidian.Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+    this.lastError = "";
+    this.lastInfo = "";
+  }
+
+  async onOpen() {
+    const vaultPath = vaultRootPath(this.app);
+    if (vaultPath && !this.plugin.settings.githubRepoName) {
+      this.plugin.settings.githubRepoName = defaultGitHubRepoName(vaultPath);
+      await this.plugin.saveSettings();
+    }
+    if (!this.plugin.settings.githubOwner) {
+      const user = ghCurrentUser();
+      if (user) {
+        this.plugin.settings.githubOwner = user;
+        await this.plugin.saveSettings();
+      }
+    }
+    this.render();
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+
+  render() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("brain-ask-modal");
+    contentEl.addClass("brain-ask-github");
+
+    const header = contentEl.createEl("div", { cls: "brain-ask-header" });
+    const titleRow = header.createEl("div", { cls: "brain-ask-title-row" });
+    titleRow.createEl("div", { cls: "brain-ask-title", text: "GitHub Connect" });
+    titleRow.createEl("div", { cls: "brain-ask-mode-chip", text: "setup" });
+    header.createEl("div", {
+      cls: "brain-ask-subtitle",
+      text: "connect this vault to a private GitHub repo via local git + GitHub CLI",
+    });
+
+    if (this.lastError) {
+      renderPreflightError(contentEl, {
+        reason: "GitHub Connect blocked",
+        detail: this.lastError,
+        fix: "Fix the issue, then click Check again.",
+      });
+    } else if (this.lastInfo) {
+      const info = contentEl.createEl("div", { cls: "brain-ask-github-info" });
+      info.setText(this.lastInfo);
+    }
+
+    const vaultPath = vaultRootPath(this.app);
+    const snapshot = vaultPath ? getGitHubConnectionSnapshot(vaultPath) : null;
+    this.renderSnapshot(contentEl, snapshot);
+    this.renderSettings(contentEl);
+    this.renderActions(contentEl, snapshot);
+  }
+
+  renderSnapshot(parent, snapshot) {
+    const section = parent.createEl("section", { cls: "brain-ask-github-section" });
+    section.createEl("div", { cls: "brain-ask-pulse-section-title", text: "connection status" });
+    if (!snapshot) {
+      section.createEl("div", { cls: "brain-ask-pulse-empty", text: "vault path unavailable" });
+      return;
+    }
+    const grid = section.createEl("div", { cls: "brain-ask-pulse-grid" });
+    const card = (label, value, state) => {
+      const el = grid.createEl("div", { cls: `brain-ask-pulse-card brain-ask-github-card-${state}` });
+      el.createEl("div", { cls: "brain-ask-pulse-card-label", text: label });
+      el.createEl("div", { cls: "brain-ask-pulse-card-path", text: value });
+    };
+    card("git", snapshot.gitFound ? (snapshot.isRepo ? "repository ready" : "git found, vault not initialized") : "git not found", snapshot.gitFound && snapshot.isRepo ? "ok" : "warn");
+    card("github cli", snapshot.ghFound ? (snapshot.ghAuthenticated ? "authenticated" : "login needed") : "gh not found", snapshot.ghFound && snapshot.ghAuthenticated ? "ok" : "warn");
+    card("origin", snapshot.originRepo ? snapshot.originRepo.fullName : (snapshot.origin || "no origin remote"), snapshot.originRepo ? "ok" : "warn");
+    card("working tree", snapshot.isRepo ? `${snapshot.dirtyCount} pending file${snapshot.dirtyCount === 1 ? "" : "s"}` : "not initialized", snapshot.isRepo && snapshot.dirtyCount === 0 ? "ok" : "warn");
+  }
+
+  renderSettings(parent) {
+    const section = parent.createEl("section", { cls: "brain-ask-github-section" });
+    section.createEl("div", { cls: "brain-ask-pulse-section-title", text: "target repo" });
+
+    new obsidian.Setting(section)
+      .setName("GitHub owner")
+      .setDesc("Your GitHub username or org. Auto-detected from `gh api user` after login.")
+      .addText((text) =>
+        text
+          .setPlaceholder("github-user-or-org")
+          .setValue(this.plugin.settings.githubOwner || "")
+          .onChange(async (v) => {
+            this.plugin.settings.githubOwner = v.trim();
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new obsidian.Setting(section)
+      .setName("Repository name")
+      .setDesc("Created as a private repo by default. Existing repo names are reused.")
+      .addText((text) =>
+        text
+          .setPlaceholder("my-brain-vault")
+          .setValue(this.plugin.settings.githubRepoName || "")
+          .onChange(async (v) => {
+            this.plugin.settings.githubRepoName = slugifyGitHubRepoName(v);
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new obsidian.Setting(section)
+      .setName("Visibility")
+      .setDesc("Private is the safe default for personal vaults.")
+      .addDropdown((dd) =>
+        dd
+          .addOption("private", "Private")
+          .addOption("public", "Public")
+          .setValue(this.plugin.settings.githubRepoVisibility || "private")
+          .onChange(async (v) => {
+            this.plugin.settings.githubRepoVisibility = v === "public" ? "public" : "private";
+            await this.plugin.saveSettings();
+          }),
+      );
+  }
+
+  renderActions(parent, snapshot) {
+    const actions = parent.createEl("div", { cls: "brain-ask-github-actions" });
+    const button = (label, fn) => {
+      const btn = actions.createEl("button", {
+        cls: "brain-ask-trace-action-btn",
+        text: label,
+        attr: { type: "button" },
+      });
+      btn.addEventListener("click", fn);
+      return btn;
+    };
+
+    button("Check again", () => {
+      this.lastError = "";
+      this.lastInfo = "";
+      this.render();
+    });
+
+    button("Copy gh login", async () => {
+      const command = "gh auth login --hostname github.com --git-protocol https --web";
+      try {
+        await copyTextToClipboard(command);
+        new obsidian.Notice("Copied gh auth command");
+      } catch {
+        new obsidian.Notice(command, 10000);
+      }
+    });
+
+    if (!snapshot || !snapshot.isRepo) {
+      button("Initialize Git", () => this.initializeGit());
+    }
+
+    button(snapshot && snapshot.originRepo ? "Commit + push" : "Create repo + push", () => this.createRepoAndPush());
+  }
+
+  initializeGit() {
+    const vaultPath = vaultRootPath(this.app);
+    const res = runGitRaw(vaultPath, ["init"], 10000);
+    if (!res.ok) {
+      this.lastError = res.detail;
+    } else {
+      runGitRaw(vaultPath, ["branch", "-M", "main"], 5000);
+      ensureVaultGitignore(vaultPath);
+      this.lastError = "";
+      this.lastInfo = "Local git repository initialized. .gitignore was checked for Brain Operator private runtime files.";
+    }
+    this.render();
+  }
+
+  createRepoAndPush() {
+    const vaultPath = vaultRootPath(this.app);
+    if (!vaultPath) {
+      this.lastError = "Vault path unavailable.";
+      this.render();
+      return;
+    }
+
+    const fullName = githubRepoFullName(
+      this.plugin.settings.githubOwner,
+      this.plugin.settings.githubRepoName || defaultGitHubRepoName(vaultPath),
+    );
+    if (!fullName) {
+      this.lastError = "Set a valid GitHub owner and repo name first.";
+      this.render();
+      return;
+    }
+
+    const auth = ghAuthState();
+    if (!auth.ok) {
+      this.lastError = "GitHub CLI is not authenticated. Copy and run the `gh auth login` command, then return here.";
+      this.render();
+      return;
+    }
+
+    let snapshot = getGitHubConnectionSnapshot(vaultPath);
+    if (!snapshot.isRepo) {
+      const init = runGitRaw(vaultPath, ["init"], 10000);
+      if (!init.ok) {
+        this.lastError = init.detail;
+        this.render();
+        return;
+      }
+      runGitRaw(vaultPath, ["branch", "-M", "main"], 5000);
+      snapshot = getGitHubConnectionSnapshot(vaultPath);
+    }
+
+    if (snapshot.originRepo && snapshot.originRepo.fullName !== fullName) {
+      this.lastError = `Origin already points at ${snapshot.originRepo.fullName}. Change the target repo to match, or update the remote manually.`;
+      this.render();
+      return;
+    }
+    if (snapshot.origin && !snapshot.originRepo) {
+      this.lastError = `Origin already exists but is not a GitHub remote Brain Operator can manage: ${snapshot.origin}`;
+      this.render();
+      return;
+    }
+
+    const hits = scanVaultForLikelySecrets(vaultPath);
+    if (hits.length) {
+      this.lastError = `Refusing to push: likely secret pattern found in ${hits.slice(0, 5).join(", ")}${hits.length > 5 ? "..." : ""}`;
+      this.render();
+      return;
+    }
+
+    ensureVaultGitignore(vaultPath);
+    const commit = this.ensureBackupCommit(vaultPath);
+    if (!commit.ok) {
+      this.lastError = commit.detail;
+      this.render();
+      return;
+    }
+
+    snapshot = getGitHubConnectionSnapshot(vaultPath);
+    if (!snapshot.originRepo) {
+      const exists = runGh(["repo", "view", fullName, "--json", "name"], 8000, vaultPath);
+      if (exists.ok) {
+        const remote = runGitRaw(vaultPath, ["remote", "add", "origin", `https://github.com/${fullName}.git`], 5000);
+        if (!remote.ok && !/remote origin already exists/i.test(remote.detail)) {
+          this.lastError = remote.detail;
+          this.render();
+          return;
+        }
+      } else {
+        const visibility = this.plugin.settings.githubRepoVisibility === "public" ? "--public" : "--private";
+        const create = runGh(["repo", "create", fullName, visibility, "--source=.", "--remote=origin"], 30000, vaultPath);
+        if (!create.ok) {
+          this.lastError = create.detail;
+          this.render();
+          return;
+        }
+      }
+    }
+
+    snapshot = getGitHubConnectionSnapshot(vaultPath);
+    const branch = snapshot.branch || "main";
+    if (!snapshot.branch) runGitRaw(vaultPath, ["branch", "-M", branch], 5000);
+    const push = runGitRaw(vaultPath, ["push", "-u", "origin", branch], 120000);
+    if (!push.ok) {
+      this.lastError = push.detail;
+    } else {
+      this.lastError = "";
+      this.lastInfo = `Pushed ${branch} to https://github.com/${fullName}`;
+      new obsidian.Notice(`GitHub connected: ${fullName}`);
+    }
+    this.render();
+  }
+
+  ensureBackupCommit(vaultPath) {
+    const add = runGitRaw(vaultPath, ["add", "-A"], 30000);
+    if (!add.ok) return add;
+    const staged = runGitRaw(vaultPath, ["diff", "--cached", "--name-only"], 10000);
+    if (staged.ok && !staged.stdout.trim()) return { ok: true, stdout: "" };
+    const now = new Date();
+    const stamp = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0"),
+      String(now.getHours()).padStart(2, "0"),
+      String(now.getMinutes()).padStart(2, "0"),
+    ].join("-");
+    const commit = runGitRaw(vaultPath, ["commit", "-m", `vault backup: ${stamp}`], 60000);
+    if (commit.ok || /nothing to commit/i.test(commit.detail || "")) return { ok: true, stdout: "" };
+    return commit;
   }
 }
 
@@ -4535,7 +5473,7 @@ class HomeModal extends obsidian.Modal {
     titleRow.createEl("div", { cls: "brain-ask-title", text: "Brain Operator" });
     titleRow.createEl("div", { cls: "brain-ask-mode-chip", text: "home" });
     const subtitle = header.createEl("div", { cls: "brain-ask-subtitle" });
-    subtitle.setText("agent devtools for Claude + Codex on a shared vault · technical preview v0.6.1");
+    subtitle.setText("agent devtools for Claude + Codex on a shared vault · technical preview v0.6.5");
 
     this.renderStatusStrip(contentEl);
     this.renderSafetyPanel(contentEl);
@@ -4658,6 +5596,13 @@ class HomeModal extends obsidian.Modal {
       onClick: () => openMode(() => new AgentPulseModal(this.app, this.plugin)),
     });
 
+    this.makeCard(grid, {
+      label: "GitHub Connect",
+      subtitle: "initialize git · create private repo · push",
+      accent: "blue",
+      onClick: () => openMode(() => new GitHubConnectModal(this.app, this.plugin)),
+    });
+
     // v0.5.3 — Decide and File Back removed from the Home grid per the
     // day-1 review. Both were "coming soon" indefinitely and inflated the
     // mode count. The Home modal now shows only modes that actually run.
@@ -4712,11 +5657,68 @@ class HomeModal extends obsidian.Modal {
  * Esc behaviour for free.
  * ---------------------------------------------------------------*/
 
-class QuickModeModal extends obsidian.SuggestModal {
+const BrainSuggestModalBase = obsidian.SuggestModal || class BrainFallbackSuggestModal extends obsidian.Modal {
+  constructor(app) {
+    super(app);
+    this.placeholder = "";
+    this.inputEl = null;
+    this.suggestionsEl = null;
+  }
+
+  setPlaceholder(text) {
+    this.placeholder = text || "";
+    if (this.inputEl) this.inputEl.placeholder = this.placeholder;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("brain-ask-quick-fallback");
+    contentEl.createEl("h2", { text: "Brain Operator" });
+    this.inputEl = contentEl.createEl("input", {
+      cls: "brain-ask-quick-fallback-input",
+      attr: { type: "text", placeholder: this.placeholder },
+    });
+    this.suggestionsEl = contentEl.createEl("div", { cls: "brain-ask-quick-fallback-results" });
+
+    const render = () => {
+      const items = this.getSuggestions(this.inputEl.value) || [];
+      this.suggestionsEl.empty();
+      for (const item of items) {
+        const row = this.suggestionsEl.createEl("button", { cls: "brain-ask-quick-fallback-row" });
+        this.renderSuggestion(item, row);
+        row.addEventListener("click", () => {
+          this.close();
+          this.onChooseSuggestion(item);
+        });
+      }
+    };
+
+    this.inputEl.addEventListener("input", render);
+    this.inputEl.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      const first = (this.getSuggestions(this.inputEl.value) || [])[0];
+      if (!first) return;
+      event.preventDefault();
+      this.close();
+      this.onChooseSuggestion(first);
+    });
+    render();
+    const focus = () => this.inputEl && this.inputEl.focus();
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(focus);
+    else setTimeout(focus, 0);
+  }
+
+  getSuggestions() { return []; }
+  renderSuggestion(item, el) { el.setText(String(item)); }
+  onChooseSuggestion() {}
+};
+
+class QuickModeModal extends BrainSuggestModalBase {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
-    this.setPlaceholder("Brain Operator — type a mode (ask, evolve, ship, pulse, home)");
+    this.setPlaceholder("Brain Operator — type a mode (ask, evolve, ship, pulse, github, home)");
     this.modes = [
       { id: "ask",       label: "Ask",                   hint: "vault-aware q&a",                 factory: () => new AskModal(app, plugin, { resume: false }) },
       { id: "ask-sel",   label: "Ask about selection",   hint: "uses currently selected text",    factory: () => this.askSelection() },
@@ -4725,6 +5727,7 @@ class QuickModeModal extends obsidian.SuggestModal {
       { id: "evolve",    label: "Evolve — dry run",      hint: "audit operating layer · no writes", factory: () => new EvolveModal(app, plugin) },
       { id: "ship",      label: "Ship — queue triage",   hint: "classify queued proposals",         factory: () => new ShipModal(app, plugin) },
       { id: "pulse",     label: "Agent Pulse",           hint: "claude + codex timeline",           factory: () => new AgentPulseModal(app, plugin) },
+      { id: "github",    label: "GitHub Connect",        hint: "init git · create repo · push",      factory: () => new GitHubConnectModal(app, plugin) },
       { id: "home",      label: "Home",                  hint: "all modes",                         factory: () => new HomeModal(app, plugin) },
       { id: "settings",  label: "Settings",              hint: "claude path · permissions · pages", factory: () => this.openSettings() },
     ];
@@ -4825,5 +5828,27 @@ module.exports.testHooks = {
   getAskPermissionMode,
   safeParseStreamJsonLine,
   detectGitBinary,
+  detectGhBinary,
+  slugifyGitHubRepoName,
+  sanitizeGitHubOwner,
+  githubRepoFullName,
+  defaultGitHubRepoName,
+  parseGitHubRemoteUrl,
+  getGitHubConnectionSnapshot,
   parsePlanJsonShape_version: 1,
 };
+} catch (err) {
+  try {
+    const stack = err && err.stack ? err.stack : String(err);
+    const out = [
+      `[${new Date().toISOString()}] Brain Operator failed during module import`,
+      stack,
+      "",
+    ].join("\n");
+    fs.writeFileSync(pathMod.join(__dirname, "import-error.log"), out, "utf8");
+    fs.writeFileSync(pathMod.join(os.tmpdir(), "brain-ask-import-error.log"), out, "utf8");
+  } catch (logErr) {
+    console.warn("[Brain Operator] could not write import-error.log", logErr);
+  }
+  throw err;
+}

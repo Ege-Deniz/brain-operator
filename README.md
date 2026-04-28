@@ -2,11 +2,46 @@
 
 # Brain Operator
 
-> **Status:** Technical Preview · v0.6.1
+> **Status:** Technical Preview · v0.6.5
 >
 > Agent DevTools for local AI developers running Claude Code, Codex, and similar agents over markdown vaults/repos. Brain Operator makes agent work inspectable: what it searched, read, cited, missed, changed, and handed to the next agent.
 
 Not "chat with notes." That category is crowded. Brain Operator's job is to make local agent runs debuggable, resumable, and safer to ship.
+
+## What's new in v0.6.5
+
+Auth-probe hotfix and shell-safety hardening for the same call site.
+
+- **Auth probe runs again.** Claude Code CLI 2.1.121 rejects `--output-format json` on `auth status` and exits non-zero, which the previous probe interpreted as "Claude Code is not authenticated." The flag is dropped — bare `claude auth status` already returns JSON.
+- **Auth gate reads the right field.** The CLI returns `{loggedIn: true, ...}`, but the gate previously checked `auth.authenticated === false`. The gate now accepts either `loggedIn === true` or `authenticated === true`, so older and newer CLI shapes both pass.
+- **`execFileSync` everywhere we spawn `claude` for probes.** The probe at `checkClaudeAuth` no longer interpolates `claudeBinPath` into a shell string — it uses `execFileSync(binPath, ["auth", "status"], …)` so a `$(…)` or backtick in the configured binary path can no longer break out of the quote and execute arbitrary commands.
+
+Test status as of v0.6.5: `parser-tests.js` has **117/117** passing assertions, `cold-install-sim.js` has **18/18**, and `apply-guard-e2e.js` has **6/6**.
+
+## What's new in v0.6.4
+
+Obsidian bundle hotfix.
+
+- **Real loader fix.** `main.js` no longer uses `require("./schemas")`; the AgentTrace/AgentReceipt schema helpers are inlined so Obsidian can load the plugin as a single runtime file.
+- **Runtime verified.** Obsidian 1.12.7 now reports `brain-ask` loaded and registers all nine `brain-ask:*` commands.
+- **Regression covered.** Parser tests assert the forbidden local schema require is absent.
+
+## What's new in v0.6.3
+
+Load hotfix for Obsidian installs where the optional `SuggestModal` API is unavailable during plugin import.
+
+- **Quick still opens.** The Quick dispatcher now falls back to a plain modal picker instead of aborting plugin load.
+- **Better diagnostics.** If the plugin fails later during `onload()`, Brain Operator writes `.obsidian/plugins/brain-ask/load-error.log` with the stack trace.
+- **Regression covered.** Parser tests intentionally omit `SuggestModal` from the Obsidian shim and still require the real plugin entrypoint.
+
+## What's new in v0.6.2
+
+GitHub Connect closes the "fresh vault still needs manual GitHub wiring" gap.
+
+- **GitHub Connect mode.** New Home card, command, URI route, and Agent Pulse button for setting up a vault repo.
+- **Guarded automation.** If `gh` is already authenticated, Brain Operator can initialize git, add a safe `.gitignore`, create or reuse a private GitHub repo, commit, add `origin`, and push the current branch.
+- **No silent credentials.** The plugin never stores GitHub tokens and does not fake OAuth. If `gh` is missing or unauthenticated, it copies the exact `gh auth login --hostname github.com --git-protocol https --web` command and waits for the user-approved login.
+- **Remote debugging.** GitHub Connect parses existing `https`, `git@github.com:`, and `ssh://git@github.com/` remotes so users can see whether the vault already points at the intended repo.
 
 ## What's new in v0.6.1
 
@@ -29,7 +64,7 @@ This release implements the Agent DevTools foundation:
 - **Catalog prompt cap.** Large vaults no longer inject the whole markdown catalog; the trace reports included/omitted counts.
 - **Temp-git Apply e2e.** A new filesystem test verifies the dirty-file guard and post-apply scope model.
 
-Test status as of v0.6.1: `parser-tests.js` has **110/110** passing assertions, `cold-install-sim.js` has **18/18**, and `apply-guard-e2e.js` has **6/6**. v0.6.1 is a polish release on top of v0.6.0 with no behavior change, so the v0.6.0 assertion counts continue to hold.
+v0.6.0 test status: `parser-tests.js` had **110/110** passing assertions, `cold-install-sim.js` had **18/18**, and `apply-guard-e2e.js` had **6/6**.
 
 Older release notes live in [CHANGELOG.md](./CHANGELOG.md).
 
@@ -120,7 +155,8 @@ This is a Technical Preview. Honest about what's not done:
 - **Ship per-row execution** is unbuilt. Current Ship mode is read-only triage + copy-able terminal commands. Per-row execution remains on the roadmap.
 - **Decide and File Back** are NOT shipped. Removed from the Home grid in v0.5.3. They appear in the Roadmap line only as "under consideration, not promised."
 - **Codex parity.** Both agents already share `AGENTS.md` / `CLAUDE.md` (the cross-CLI standard). The Agent Handoff Log and Pulse work for both. But the plugin only spawns Claude Code subprocesses today; Codex is observed (Pulse), not driven. Native Codex spawn is a roadmap item.
-- **Single Obsidian vault.** No multi-vault sync, no remote sync, no real-time collaboration. The cross-CLI handoff is across sessions, not concurrent agents on the same vault.
+- **GitHub auth is user-approved.** GitHub Connect automates repo creation and push after `gh` is authenticated, but the login itself still requires the user to approve GitHub OAuth/device auth. No token is stored in Brain Operator settings.
+- **Single Obsidian vault.** No multi-vault sync, no managed sync scheduler, no real-time collaboration. GitHub Connect wires a git remote; tools like Obsidian Git can use that remote for ongoing sync.
 - **First-class CLI is not extracted yet.** The schemas are now reusable, but Obsidian remains the only UI.
 
 ## How it works
@@ -133,6 +169,7 @@ Obsidian plugin
   ├─ AskModal         ─→ spawns claude with vault-aware preamble + tools
   ├─ EvolveModal      ─→ spawns claude with --permission-mode plan (read-only)
   ├─ ShipModal        ─→ proposal queue triage with structured ship-json output
+  ├─ GitHubConnect    ─→ local git init + gh repo create/reuse + private push
   ├─ AgentPulseModal  ─→ pure filesystem reads (Claude + Codex sessions, git, images)
   ├─ QuickModeModal   ─→ fuzzy mode dispatcher (SuggestModal)
   └─ BrainAskSettingTab — claude/codex paths, permission mode, evolve pages
@@ -226,7 +263,7 @@ The plugin doesn't directly invoke these — Claude Code auto-loads any `SKILL.m
 
 - `obsidian-local-rest-api` — consumable via `--mcp-config` for MCP-based retrieval (advanced)
 - `mcp-tools` — Brain Operator handles **prompt injection + trace + bootstrap**, not vault API
-- `obsidian-git`, `obsidian-excalidraw-plugin` — no conflict
+- `obsidian-git`, `obsidian-excalidraw-plugin` — no conflict; GitHub Connect prepares the underlying git remote that Obsidian Git can later sync
 - Any Claude Code skills you have installed locally — auto-loaded alongside the bundled three
 
 ## Roadmap
@@ -247,6 +284,10 @@ The plugin doesn't directly invoke these — Claude Code auto-loads any `SKILL.m
 - **v0.5.8** ✅ `AGENTS.md` scaffold, `--max-turns` parity, Pulse vault scoping, handoff append lock, live-helper drift tests.
 - **v0.6.0** ✅ AgentTrace / AgentReceipt schemas, trace export actions, Ask forced read-only, fenced untrusted handoff context, catalog prompt cap, dirty out-of-scope Apply preflight, temp-git Apply e2e.
 - **v0.6.1** ✅ Home modal cleanup — Cozy Desk launcher row removed (parked surface), per-card version chips dropped, Ask-resume subtitle softened (no raw hex session id), redundant "no writes" badges trimmed, ~620 lines of dead Cozy Desk CSS stripped from `styles.css`.
+- **v0.6.2** ✅ GitHub Connect — guarded local git init, `.gitignore` hardening, GitHub CLI auth detection, private repo create/reuse, origin wiring, commit, push, and remote parsing tests.
+- **v0.6.3** ✅ Load hotfix — Quick dispatcher no longer requires `SuggestModal` at import time; `onload()` failures now write `load-error.log`.
+- **v0.6.4** ✅ Obsidian bundle hotfix — `main.js` is self-contained at runtime; Obsidian loads `brain-ask` and registers all commands.
+- **v0.6.5** ✅ Auth-probe hotfix — drops the `--output-format json` flag the current Claude Code CLI rejects on `auth status`, reads the `loggedIn` field returned by the CLI, and switches the probe to `execFileSync` so a `$(…)` in the configured binary path can no longer break out of the shell quote.
 - **next** Runtime cold-install pass on a fresh vault, live Evolve→Apply confirmation, README screenshots, native Codex spawn only if users ask for it.
 - **v1.0** Polish + Obsidian community plugin marketplace submission
 

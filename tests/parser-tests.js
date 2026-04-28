@@ -15,6 +15,7 @@
  *   5. git-diff guard expectations (paths in vs out of allowlist)
  *   6. AgentTrace / AgentReceipt export helpers
  *   7. safer handoff context, Ask read-only mode, catalog caps, dirty Apply guard
+ *   8. GitHub Connect repo-name and remote parsing helpers
  *
  * Output: prints PASS/FAIL per test + summary. Exit 0 if all pass, 1 otherwise.
  */
@@ -23,9 +24,9 @@
 
 // v0.6.0 — minimal Obsidian shim so we can `require('../main.js')` from a
 // plain Node test process. main.js does `require("obsidian")` at the top
-// and defines classes that `extends obsidian.Plugin` etc. We only need
-// the import not to throw and the classes not to error at definition;
-// no test calls into any modal, so the stubs do not need real behaviour.
+// and defines classes that `extends obsidian.Plugin` etc. We intentionally
+// omit SuggestModal so the plugin proves it can load on Obsidian builds
+// where that optional API is unavailable.
 const Module = require('module');
 const _origLoad = Module._load;
 Module._load = function (request) {
@@ -47,7 +48,6 @@ Module._load = function (request) {
       Plugin: Stub,
       Modal: Stub,
       PluginSettingTab: Stub,
-      SuggestModal: Stub,
       Setting: Stub,
       Notice: noop,
     };
@@ -263,6 +263,10 @@ function liveHelperImportSuite() {
     assert(!!live, 'main.js exports testHooks');
     if (!live) return;
 
+    const mainText = require('fs').readFileSync(require('path').join(__dirname, '..', 'main.js'), 'utf8');
+    assert(!mainText.includes('require("./schemas")'),
+      'main.js is self-contained for Obsidian runtime (no local schema require)');
+
     // normalizeLoadedSettings — protects public/distributed clones from
     // inheriting a private maintainer data.json with bypassPermissions set.
     const normalizedBypass = live.normalizeLoadedSettings({
@@ -417,6 +421,21 @@ function liveHelperImportSuite() {
       'live safeParseStreamJsonLine parses valid stream events');
     assert(badLine.ok === false && /parse/.test(badLine.error),
       'live safeParseStreamJsonLine reports malformed stream events without throwing');
+
+    assert(live.slugifyGitHubRepoName('My Brain Vault!!') === 'my-brain-vault',
+      'live slugifyGitHubRepoName normalizes repo names');
+    assert(live.sanitizeGitHubOwner('Ege-Deniz') === 'Ege-Deniz',
+      'live sanitizeGitHubOwner accepts valid owner names');
+    assert(live.sanitizeGitHubOwner('-bad-owner') === '',
+      'live sanitizeGitHubOwner rejects invalid owner names');
+    assert(live.githubRepoFullName('Ege-Deniz', 'Brain Operator') === 'Ege-Deniz/brain-operator',
+      'live githubRepoFullName builds safe full name');
+    const httpsRemote = live.parseGitHubRemoteUrl('https://github.com/Ege-Deniz/brain-operator.git');
+    assert(httpsRemote && httpsRemote.fullName === 'Ege-Deniz/brain-operator',
+      'live parseGitHubRemoteUrl parses https remotes');
+    const sshRemote = live.parseGitHubRemoteUrl('git@github.com:Ege-Deniz/brain-operator.git');
+    assert(sshRemote && sshRemote.owner === 'Ege-Deniz' && sshRemote.repo === 'brain-operator',
+      'live parseGitHubRemoteUrl parses ssh remotes');
   });
 }
 

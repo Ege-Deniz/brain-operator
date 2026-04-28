@@ -2,6 +2,43 @@
 
 All notable changes to Brain Operator. The README keeps only the latest release; older entries live here.
 
+## v0.6.5
+
+Auth-probe hotfix and shell-safety hardening for the same call site. Without this fix, every Ask / Trace / Evolve / Ship / Decide / File-Back / GitHub Connect modal renders "Claude Code is not authenticated" against current Claude Code CLI installs, even when `claude auth status` reports the user is logged in.
+
+- **Drops `--output-format json` from the auth probe.** Claude Code CLI 2.1.121 rejects that flag on `auth status` and exits non-zero, which the previous probe interpreted as an authentication failure. Bare `claude auth status` already returns JSON, so the flag is unnecessary.
+- **Reads the right field.** The CLI returns `{loggedIn: true, ...}`, but the gate previously checked `auth.authenticated === false`. The probe now normalizes both fields to the same boolean, and the gate accepts either — so older and newer CLI shapes both pass.
+- **Falls back to text matching.** If the CLI returns human-readable output instead of JSON (older or future builds), the probe matches `logged in` / `authenticated` / `signed in` so a benign output-shape change does not lock authenticated users out.
+- **`execFileSync` for both probe call sites.** `checkClaudeAuth` and `codexVersion` no longer interpolate the user-controlled `claudeBinPath` / `codexBinPath` into a shell string. A `$(…)` or backtick in either path can no longer break out of the shell quote and execute arbitrary commands during preflight. The remaining `cp.spawn` paths already use the array-arg form and never went through a shell.
+- **Tests pass unchanged.** Test totals stay at parser **117/117**, cold-install **18/18**, apply-guard e2e **6/6**.
+
+## v0.6.4
+
+Obsidian bundle hotfix. Closes the real loader failure after v0.6.3.
+
+- **Single-file runtime bundle.** Inlined the AgentTrace/AgentReceipt schema helpers into `main.js`; Obsidian's plugin loader does not resolve `require("./schemas")` relative to the plugin folder.
+- **Verified through Obsidian runtime.** Relaunched Obsidian with a local DevTools port and confirmed `app.plugins.plugins["brain-ask"]` is loaded and all nine `brain-ask:*` commands are registered.
+- **Regression guard.** Parser tests now assert `main.js` does not contain the forbidden local schema require. Test totals: parser **117/117**, cold-install **18/18**, apply-guard e2e **6/6**.
+
+## v0.6.3
+
+Load hotfix for Obsidian installs where the optional `SuggestModal` API is unavailable at plugin import time.
+
+- **Quick dispatcher fallback.** `QuickModeModal` now falls back to a plain modal picker instead of extending an undefined Obsidian class and aborting plugin load.
+- **Load diagnostics.** If `onload()` fails after import, Brain Operator writes `.obsidian/plugins/brain-ask/load-error.log` with the stack trace and shows a focused failure notice.
+- **Regression test.** Parser tests now intentionally omit `SuggestModal` from the Obsidian shim. Test totals remain parser **116/116**, cold-install **18/18**, apply-guard e2e **6/6**.
+
+## v0.6.2
+
+GitHub Connect. Closes the setup gap where users still had to manually wire a vault to GitHub after scaffolding it.
+
+- **New GitHub Connect mode.** Added a Home card, command palette command, URI route, Quick dispatcher entry, and Agent Pulse Git-tab button.
+- **Guarded repo automation.** When `gh` is installed and authenticated, Brain Operator can initialize local git, add safe `.gitignore` entries, create or reuse a GitHub repo, add `origin`, make a backup commit, and push the current branch.
+- **Private by default.** New repos default to private. Public is available, but explicit.
+- **No silent auth.** The plugin does not store GitHub credentials and does not attempt hidden OAuth. If `gh` is unauthenticated, GitHub Connect copies the exact `gh auth login --hostname github.com --git-protocol https --web` command and waits for user-approved login.
+- **Secret preflight.** Before creating/pushing, the modal scans text files for common token/private-key patterns and refuses to push likely secrets.
+- **Remote parsing tests.** Parser tests now cover repo-name normalization, owner validation, full-name construction, and `https`/SSH GitHub remote parsing. Test totals: parser **116/116**, cold-install **18/18**, apply-guard e2e **6/6**.
+
 ## v0.6.1
 
 Home modal cleanup. No new features, no behavior change.
