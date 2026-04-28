@@ -2,6 +2,15 @@
 
 All notable changes to Brain Operator. The README keeps only the latest release; older entries live here.
 
+## v0.6.6
+
+Multi-reviewer hardening pass. Closes three live failure modes the v0.6.5 review surfaced.
+
+- **`<finding>` fence breakout closed.** The Apply system prompt fences untrusted finding text inside `<finding><text>…</text></finding>`. A finding whose body contained `</text></finding>` could escape that fence and inject instructions into the trusted region. A new `encodeXmlText` helper entity-encodes `<`, `>`, and `&` before interpolation, so the closing tag literally cannot appear inside the fenced text.
+- **Stdin EPIPE no longer crashes the renderer.** When the spawned `claude` process dies between spawn and stdin write, Node emits an asynchronous `'error'` event on the writable stdin. Without a listener, the renderer process throws an uncaught exception that takes down the modal. Brain Operator now registers a no-op `'error'` listener at all four spawn sites (Ask, Evolve, Ship, generic `streamSubprocess`) before writing.
+- **Cancel no longer leaks the elapsed-time interval.** Pressing Escape during a long Ask/Evolve/Ship run sent SIGTERM but never cleared the 1-second `setInterval` driving the elapsed-seconds badge — when the close handler did not fire (process already gone), the interval ticked forever in the renderer. The interval-stop closure is now stored on the modal as `_stopTick`, and `cancelChild()` calls it before `kill()`.
+- **Tests pass unchanged.** Test totals stay at parser **117/117**, cold-install **18/18**, apply-guard e2e **6/6**.
+
 ## v0.6.5
 
 Auth-probe hotfix and shell-safety hardening for the same call site. Without this fix, every Ask / Trace / Evolve / Ship / Decide / File-Back / GitHub Connect modal renders "Claude Code is not authenticated" against current Claude Code CLI installs, even when `claude auth status` reports the user is logged in.

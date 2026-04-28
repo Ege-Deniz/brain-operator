@@ -956,6 +956,19 @@ function _sanitizeHandoffField(s) {
   return String(s).replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+// v0.6.6 — entity-encode untrusted text before interpolating it into an
+// XML-fenced region of a system prompt. A finding whose body contains
+// `</text></finding>` and crafted instructions could otherwise close the
+// fence and smuggle directives into the trusted region. Encoding `&` first
+// is required so subsequent `<`/`>` substitutions are not double-decoded.
+function encodeXmlText(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function formatHandoffEntry(p) {
   const ts = p.timestamp || new Date();
   const tsStr = `${ts.getFullYear()}-${pad2(ts.getMonth() + 1)}-${pad2(ts.getDate())} ${pad2(ts.getHours())}:${pad2(ts.getMinutes())}:${pad2(ts.getSeconds())}`;
@@ -1718,6 +1731,12 @@ class AskModal extends obsidian.Modal {
   }
 
   cancelChild() {
+    // v0.6.6 — clear the elapsed-time interval before killing the child.
+    // Without this, an Escape during a long run leaves a setInterval ticking
+    // forever in Obsidian's renderer (the close handler never runs because
+    // the process was already gone). _stopTick is wired up in run().
+    try { if (this._stopTick) this._stopTick(); } catch { /* ignore */ }
+    this._stopTick = null;
     try { this.child.kill("SIGTERM"); } catch { /* ignore */ }
     this.child = null;
   }
@@ -1850,6 +1869,7 @@ class AskModal extends obsidian.Modal {
         elapsedBadge.setText(`${finalSecs}s`);
       }
     };
+    this._stopTick = stopTick; // v0.6.6 — make stopTick reachable from cancelChild()
 
     try {
       this.child = cp.spawn(claudeBin, args, {
@@ -1864,6 +1884,11 @@ class AskModal extends obsidian.Modal {
       return;
     }
 
+    // v0.6.6 — async EPIPE on stdin (process died after spawn) emits an
+    // 'error' event; without a listener, Node.js throws an uncaught
+    // exception in Obsidian's renderer. The sync try/catch below only
+    // catches sync throws.
+    this.child.stdin.on("error", () => {});
     try {
       this.child.stdin.write(userMessage);
       this.child.stdin.end();
@@ -2660,6 +2685,12 @@ class EvolveModal extends obsidian.Modal {
   }
 
   cancelChild() {
+    // v0.6.6 — clear the elapsed-time interval before killing the child.
+    // Without this, an Escape during a long run leaves a setInterval ticking
+    // forever in Obsidian's renderer (the close handler never runs because
+    // the process was already gone). _stopTick is wired up in run().
+    try { if (this._stopTick) this._stopTick(); } catch { /* ignore */ }
+    this._stopTick = null;
     try { this.child.kill("SIGTERM"); } catch { /* ignore */ }
     this.child = null;
   }
@@ -2789,6 +2820,7 @@ class EvolveModal extends obsidian.Modal {
       try { clearInterval(tick); } catch { /* ignore */ }
       if (elapsedBadge) elapsedBadge.setText(`${Math.floor((Date.now() - startedAt) / 1000)}s`);
     };
+    this._stopTick = stopTick; // v0.6.6 — make stopTick reachable from cancelChild()
 
     try {
       this.child = cp.spawn(claudeBin, args, {
@@ -2805,6 +2837,11 @@ class EvolveModal extends obsidian.Modal {
 
     const userMessage =
       "Run the evolve dry-run audit now. Read the required pages in order, then output the sections defined above.";
+    // v0.6.6 — async EPIPE on stdin (process died after spawn) emits an
+    // 'error' event; without a listener, Node.js throws an uncaught
+    // exception in Obsidian's renderer. The sync try/catch below only
+    // catches sync throws.
+    this.child.stdin.on("error", () => {});
     try {
       this.child.stdin.write(userMessage);
       this.child.stdin.end();
@@ -3218,6 +3255,12 @@ class ShipModal extends obsidian.Modal {
   }
 
   cancelChild() {
+    // v0.6.6 — clear the elapsed-time interval before killing the child.
+    // Without this, an Escape during a long run leaves a setInterval ticking
+    // forever in Obsidian's renderer (the close handler never runs because
+    // the process was already gone). _stopTick is wired up in run().
+    try { if (this._stopTick) this._stopTick(); } catch { /* ignore */ }
+    this._stopTick = null;
     try { this.child.kill("SIGTERM"); } catch { /* ignore */ }
     this.child = null;
   }
@@ -3362,6 +3405,7 @@ class ShipModal extends obsidian.Modal {
       try { clearInterval(tick); } catch { /* ignore */ }
       if (elapsedBadge) elapsedBadge.setText(`${Math.floor((Date.now() - startedAt) / 1000)}s`);
     };
+    this._stopTick = stopTick; // v0.6.6 — make stopTick reachable from cancelChild()
 
     try {
       this.child = cp.spawn(claudeBin, args, {
@@ -3384,6 +3428,11 @@ class ShipModal extends obsidian.Modal {
     // it still matches if the Skill tool is ever added.
     const userMessage =
       "Run brain ship triage now. Read the brain-ship skill, classify every queued proposal, output the structured ship-json block. Do not execute anything — read-only triage.";
+    // v0.6.6 — async EPIPE on stdin (process died after spawn) emits an
+    // 'error' event; without a listener, Node.js throws an uncaught
+    // exception in Obsidian's renderer. The sync try/catch below only
+    // catches sync throws.
+    this.child.stdin.on("error", () => {});
     try {
       this.child.stdin.write(userMessage);
       this.child.stdin.end();
@@ -4720,6 +4769,12 @@ class ApplyModal extends obsidian.Modal {
   }
 
   cancelChild() {
+    // v0.6.6 — clear the elapsed-time interval before killing the child.
+    // Without this, an Escape during a long run leaves a setInterval ticking
+    // forever in Obsidian's renderer (the close handler never runs because
+    // the process was already gone). _stopTick is wired up in run().
+    try { if (this._stopTick) this._stopTick(); } catch { /* ignore */ }
+    this._stopTick = null;
     try { this.child.kill("SIGTERM"); } catch { /* ignore */ }
     this.child = null;
   }
@@ -4745,9 +4800,12 @@ class ApplyModal extends obsidian.Modal {
       `- Frontmatter: title, category, tags (lowercase-hyphenated), sources, created, updated (ISO 8601)`,
       `- No emoji, no cringe/hype, direct professional tone`,
       ``,
+      // v0.6.6 — entity-encode the section + finding text before interpolation
+      // so a crafted finding cannot close the <text> or <finding> fence and
+      // smuggle instructions into the trusted region of the system prompt.
       `<finding>`,
-      `<section>${this.section}</section>`,
-      `<text>${this.findingText}</text>`,
+      `<section>${encodeXmlText(this.section)}</section>`,
+      `<text>${encodeXmlText(this.findingText)}</text>`,
       `</finding>`,
       ``,
     ].join("\n");
@@ -5363,6 +5421,8 @@ class ApplyModal extends obsidian.Modal {
       return;
     }
 
+    // v0.6.6 — see note on the 3 user-message sites; same async-EPIPE guard.
+    this.child.stdin.on("error", () => {});
     try {
       this.child.stdin.write(stdinMessage);
       this.child.stdin.end();
@@ -5473,7 +5533,7 @@ class HomeModal extends obsidian.Modal {
     titleRow.createEl("div", { cls: "brain-ask-title", text: "Brain Operator" });
     titleRow.createEl("div", { cls: "brain-ask-mode-chip", text: "home" });
     const subtitle = header.createEl("div", { cls: "brain-ask-subtitle" });
-    subtitle.setText("agent devtools for Claude + Codex on a shared vault · technical preview v0.6.5");
+    subtitle.setText("agent devtools for Claude + Codex on a shared vault · technical preview v0.6.6");
 
     this.renderStatusStrip(contentEl);
     this.renderSafetyPanel(contentEl);

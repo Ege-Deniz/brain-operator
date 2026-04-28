@@ -2,11 +2,20 @@
 
 # Brain Operator
 
-> **Status:** Technical Preview · v0.6.5
+> **Status:** Technical Preview · v0.6.6
 >
 > Agent DevTools for local AI developers running Claude Code, Codex, and similar agents over markdown vaults/repos. Brain Operator makes agent work inspectable: what it searched, read, cited, missed, changed, and handed to the next agent.
 
 Not "chat with notes." That category is crowded. Brain Operator's job is to make local agent runs debuggable, resumable, and safer to ship.
+
+## What's new in v0.6.6
+
+Multi-reviewer hardening pass. Closes three live failure modes the v0.6.5 review surfaced.
+
+- **`<finding>` fence breakout closed.** The Apply system prompt fences untrusted finding text inside `<finding><text>…</text></finding>`. A finding whose body contained `</text></finding>` could escape that fence and inject instructions into the trusted region. Now `<`, `>`, and `&` are entity-encoded before interpolation, so the closing tag literally cannot appear inside the fenced text.
+- **Stdin EPIPE no longer crashes.** When the spawned `claude` process dies between spawn and stdin write, Node emits an asynchronous `'error'` event on the writable stdin. Without a listener, the renderer process throws an uncaught exception. Brain Operator now registers a no-op `'error'` listener at all four spawn sites before writing.
+- **Cancel no longer leaks the elapsed-time interval.** Pressing Escape during a long Ask/Evolve/Ship run sent SIGTERM but never cleared the 1-second `setInterval` driving the elapsed-seconds badge. The interval is now stored on the modal and cleared inside `cancelChild()`, so a cancel cleans up cleanly even when the close handler never fires.
+- **Tests pass unchanged.** Test totals stay at parser **117/117**, cold-install **18/18**, apply-guard e2e **6/6**.
 
 ## What's new in v0.6.5
 
@@ -15,8 +24,6 @@ Auth-probe hotfix and shell-safety hardening for the same call site.
 - **Auth probe runs again.** Claude Code CLI 2.1.121 rejects `--output-format json` on `auth status` and exits non-zero, which the previous probe interpreted as "Claude Code is not authenticated." The flag is dropped — bare `claude auth status` already returns JSON.
 - **Auth gate reads the right field.** The CLI returns `{loggedIn: true, ...}`, but the gate previously checked `auth.authenticated === false`. The gate now accepts either `loggedIn === true` or `authenticated === true`, so older and newer CLI shapes both pass.
 - **`execFileSync` everywhere we spawn `claude` for probes.** The probe at `checkClaudeAuth` no longer interpolates `claudeBinPath` into a shell string — it uses `execFileSync(binPath, ["auth", "status"], …)` so a `$(…)` or backtick in the configured binary path can no longer break out of the quote and execute arbitrary commands.
-
-Test status as of v0.6.5: `parser-tests.js` has **117/117** passing assertions, `cold-install-sim.js` has **18/18**, and `apply-guard-e2e.js` has **6/6**.
 
 ## What's new in v0.6.4
 
@@ -288,6 +295,7 @@ The plugin doesn't directly invoke these — Claude Code auto-loads any `SKILL.m
 - **v0.6.3** ✅ Load hotfix — Quick dispatcher no longer requires `SuggestModal` at import time; `onload()` failures now write `load-error.log`.
 - **v0.6.4** ✅ Obsidian bundle hotfix — `main.js` is self-contained at runtime; Obsidian loads `brain-ask` and registers all commands.
 - **v0.6.5** ✅ Auth-probe hotfix — drops the `--output-format json` flag the current Claude Code CLI rejects on `auth status`, reads the `loggedIn` field returned by the CLI, and switches the probe to `execFileSync` so a `$(…)` in the configured binary path can no longer break out of the shell quote.
+- **v0.6.6** ✅ Multi-reviewer hardening — `<finding>` fence breakout closed via XML entity-encoding, stdin EPIPE no longer crashes the renderer (no-op `'error'` listener attached at all spawn sites before write), and Escape during a long run now clears the elapsed-time interval instead of leaking it.
 - **next** Runtime cold-install pass on a fresh vault, live Evolve→Apply confirmation, README screenshots, native Codex spawn only if users ask for it.
 - **v1.0** Polish + Obsidian community plugin marketplace submission
 
