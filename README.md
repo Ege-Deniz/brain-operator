@@ -1,3 +1,5 @@
+![Brain Operator — local-first handoff layer for AI developers running Claude Code and Codex over Obsidian vaults](docs/banner.png)
+
 # Brain Operator
 
 > **Status:** Technical Preview · v0.6.0

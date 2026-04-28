@@ -949,12 +949,10 @@ class BrainAskPlugin extends obsidian.Plugin {
       });
     }));
 
-    // Obsidian URI bridge — lets the SEPARATE cozy desk dashboard
-    // (01_Projects/brain-operator-dashboard-concept/) actually fire
-    // plugin commands. Click `obsidian://brain-operator?mode=ask` from
-    // anywhere → Obsidian focuses → AskModal opens. Same for evolve,
-    // ship, pulse, home. This is the operator wire from the cozy
-    // surface to the plugin without coupling them in code.
+    // Obsidian URI bridge — lets external surfaces fire plugin commands.
+    // Click `obsidian://brain-operator?mode=ask` from anywhere →
+    // Obsidian focuses → AskModal opens. Same for evolve, ship, pulse,
+    // home. Useful for keyboard-launchers and external dashboards.
     this.registerObsidianProtocolHandler("brain-operator", (params) => {
       const mode = (params && params.mode ? String(params.mode) : "home").toLowerCase();
       // v0.4.5 — proof-of-life Notice so the user can see the handler
@@ -4515,21 +4513,10 @@ class ApplyModal extends obsidian.Modal {
 }
 
 /* -----------------------------------------------------------------
- * HomeModal — clean compact mode picker for the Brain Operator plugin.
- *
- * The cozy desk dashboard is a SEPARATE surface that lives at
- * 01_Projects/brain-operator-dashboard-concept/index.html. This modal
- * is intentionally minimal — a vertical list of mode buttons, fixed
- * for the v0.4.0 overflow bug, with an "Open cozy desk ↗" link at
- * the top that opens the dashboard in a new browser window when the
- * user wants the warm operator surface.
+ * HomeModal — compact mode picker for the Brain Operator plugin.
+ * Status strip (claude / codex / catalog / last session) + safety
+ * panel + grid of mode cards. Read-only by default.
  * ---------------------------------------------------------------*/
-
-// v0.5.5 — cozy desk parked as a future WebGL portfolio concept (the
-// painted-hero genre is wrong for Brain Operator's dev-tool identity).
-// Path moved on 2026-04-26. New dev-tool dashboard will land at the
-// freed `01_Projects/brain-operator-dashboard-concept/` path.
-const COZY_DESK_VAULT_PATH = "01_Projects/future-ideas/cozy-desk-webgl-concept/index.html";
 
 class HomeModal extends obsidian.Modal {
   constructor(app, plugin) {
@@ -4548,22 +4535,7 @@ class HomeModal extends obsidian.Modal {
     titleRow.createEl("div", { cls: "brain-ask-title", text: "Brain Operator" });
     titleRow.createEl("div", { cls: "brain-ask-mode-chip", text: "home" });
     const subtitle = header.createEl("div", { cls: "brain-ask-subtitle" });
-    subtitle.setText("agent devtools for Claude + Codex on a shared markdown vault · traces, receipts, scoped apply · technical preview v0.6.0");
-
-    // "Open cozy desk ↗" — opens the SEPARATE standalone scene in a new
-    // browser window. Cozy desk and the obsidian overlay are decoupled by
-    // design — this link is the only bridge between them.
-    const cozyRow = contentEl.createEl("div", { cls: "brain-ask-home-cozy-row" });
-    cozyRow.createEl("span", { cls: "brain-ask-home-cozy-label", text: "cozy desk dashboard:" });
-    const cozyLink = cozyRow.createEl("a", {
-      cls: "brain-ask-home-cozy-link",
-      text: "open in new window ↗",
-      attr: { href: "#", title: "Opens 01_Projects/brain-operator-dashboard-concept/index.html as a separate window" },
-    });
-    cozyLink.addEventListener("click", (e) => {
-      e.preventDefault();
-      this.openCozyDesk();
-    });
+    subtitle.setText("agent devtools for Claude + Codex on a shared vault · technical preview v0.6.1");
 
     this.renderStatusStrip(contentEl);
     this.renderSafetyPanel(contentEl);
@@ -4572,27 +4544,6 @@ class HomeModal extends obsidian.Modal {
 
   onClose() {
     this.contentEl.empty();
-  }
-
-  openCozyDesk() {
-    try {
-      const adapter = this.app.vault.adapter;
-      const full = typeof adapter.getFullPath === "function"
-        ? adapter.getFullPath(COZY_DESK_VAULT_PATH)
-        : null;
-      if (full && fs.existsSync(full)) {
-        // Open the local file in the system's default browser via shell.
-        // Electron's shell.openPath honors file:// URLs cleanly on macOS.
-        const { shell } = require("electron");
-        shell.openPath(full).then((err) => {
-          if (err) new obsidian.Notice(`Could not open cozy desk: ${err}`);
-        });
-      } else {
-        new obsidian.Notice(`Cozy desk not found at ${COZY_DESK_VAULT_PATH}`);
-      }
-    } catch (err) {
-      new obsidian.Notice(`Failed to launch cozy desk: ${err.message}`);
-    }
   }
 
   // v0.5.1 — Safety panel makes the safety story visible in product UI,
@@ -4672,7 +4623,6 @@ class HomeModal extends obsidian.Modal {
     this.makeCard(grid, {
       label: "Ask",
       subtitle: "vault-aware q&a with answer trace",
-      tag: "v0.2",
       accent: "cyan",
       onClick: () => openMode(() => new AskModal(this.app, this.plugin, { resume: false })),
     });
@@ -4680,26 +4630,23 @@ class HomeModal extends obsidian.Modal {
     this.makeCard(grid, {
       label: "Ask — resume",
       subtitle: this.plugin.settings.lastSessionId
-        ? `continue ${this.plugin.settings.lastSessionId.slice(0, 8)}…`
+        ? "continue last session"
         : "no previous session yet",
-      tag: "v0.2",
       accent: "cyan",
       disabled: !this.plugin.settings.lastSessionId,
       onClick: () => openMode(() => new AskModal(this.app, this.plugin, { resume: true })),
     });
 
     this.makeCard(grid, {
-      label: "Evolve — dry run",
-      subtitle: "audit for contradictions, stale, orphans · no writes",
-      tag: "v0.3",
+      label: "Evolve",
+      subtitle: "audit for contradictions, stale claims, orphans",
       accent: "amber",
       onClick: () => openMode(() => new EvolveModal(this.app, this.plugin)),
     });
 
     this.makeCard(grid, {
-      label: "Ship — queue triage",
-      subtitle: "classify queued proposals by autonomy level · no writes",
-      tag: "v0.4",
+      label: "Ship",
+      subtitle: "classify queued proposals by autonomy level",
       accent: "amber",
       onClick: () => openMode(() => new ShipModal(this.app, this.plugin)),
     });
@@ -4707,7 +4654,6 @@ class HomeModal extends obsidian.Modal {
     this.makeCard(grid, {
       label: "Agent Pulse",
       subtitle: "claude + codex timeline · sessions · images · git",
-      tag: "v0.3",
       accent: "blue",
       onClick: () => openMode(() => new AgentPulseModal(this.app, this.plugin)),
     });
