@@ -4703,9 +4703,6 @@ class HomeModal extends obsidian.Modal {
   }
 }
 
-/* HomeModal kept compact and decoupled from the cozy desk dashboard
- * which lives at 01_Projects/brain-operator-dashboard-concept/index.html.
- * The plugin and the dashboard are deliberately separate surfaces. */
 
 /* -----------------------------------------------------------------
  * QuickModeModal — fuzzy-search dispatcher for every plugin action.

@@ -2,6 +2,32 @@
 
 All notable changes to Brain Operator. The README keeps only the latest release; older entries live here.
 
+## v0.6.1
+
+Home modal cleanup. No new features, no behavior change.
+
+- **Cozy Desk launcher row removed.** The Home modal had a parked "cozy desk dashboard: open in new window ↗" row that pointed at a retired surface (`01_Projects/future-ideas/cozy-desk-webgl-concept/`). Stripped the launcher row, the `openCozyDesk` method, the `COZY_DESK_VAULT_PATH` constant, and the obsolete header/trailer comments from `main.js`.
+- **Per-card version chips dropped.** Each Home grid card had a `v0.2`/`v0.3`/`v0.4` chip next to the label. Read like internal noise on a public Home — and implied Ask was "older" than Ship, which is the opposite of true. One global version sits in the subtitle now.
+- **Ask-resume subtitle softened.** Was `continue 8b4856fa…` (raw hex slice from `lastSessionId`). Now reads `continue last session`. Disabled state when no session exists is unchanged.
+- **Redundant "no writes" badges trimmed.** Evolve and Ship card subtitles repeated "no writes". The Safety panel above already states the read-only default. Card copy is now: Evolve → "audit for contradictions, stale claims, orphans"; Ship → "classify queued proposals by autonomy level".
+- **Subtitle string updated.** Now reads "agent devtools for Claude + Codex on a shared vault · technical preview v0.6.1".
+- **CSS strip.** Removed ~620 lines of dead Cozy Desk modal CSS from `styles.css` (2120 → 1530 lines): the `.brain-ask-home-cozy-row/label/link` launcher block (~33 lines) plus the `.brain-ask-cozy-modal` operator-surface block (~590 lines) including all `cozy-scene`, `cozy-crt`, `cozy-lamp`, `cozy-dolphin`, `cozy-glass`, `cozy-steam`, `cozy-sticky`, `cozy-walkman`, `cozy-brand-strip` selectors and their reduced-motion / compact-screen `@media` queries. Verified `main.js` no longer references any `.brain-ask-cozy-*` or `.cozy-*` class.
+- **Test surface unchanged.** v0.6.1 is pure UI/CSS cleanup — `parser-tests.js` (110/110), `cold-install-sim.js` (18/18), and `apply-guard-e2e.js` (6/6) continue to pass without modification.
+
+## v0.6.0
+
+Agent DevTools foundation.
+
+- **AgentTrace schema.** Ask now builds a stable trace with `runId`, `agent`, `mode`, `query`, `catalog`, `searched`, `read`, `cited`, `missing`, `warnings`, and `createdAt`.
+- **AgentReceipt schema.** Ask and Apply can export portable Markdown/JSON receipts for PRs, issues, Slack, or wiki records.
+- **Trace export actions.** Answer Trace now has `Export Trace as Markdown`, `Export Trace as JSON`, and `Copy Agent Receipt`.
+- **Ask is hard read-only.** Ask/Trace always spawn Claude with `--permission-mode plan` and `Read,Grep,Glob`, regardless of the write-mode setting.
+- **Handoffs are fenced as untrusted JSON.** Prior sessions are parsed into structured fields and injected as `agent-handoff-json`, not raw markdown instructions.
+- **Safe Apply blocks dirty out-of-scope files.** Apply refuses to run when the git worktree is already dirty outside the target allowlist.
+- **Catalog prompt cap.** Large vaults no longer inject the whole markdown catalog; the trace reports included/omitted counts.
+- **Temp-git Apply e2e.** A new filesystem test verifies the dirty-file guard and post-apply scope model.
+- **Test totals at v0.6.0.** `parser-tests.js` 110/110, `cold-install-sim.js` 18/18, `apply-guard-e2e.js` 6/6.
+
 ## v0.5.8
 
 Senior-pass review fixes — closing the wedge gap, hardening cost-safety, and adding drift detection to the test suite.

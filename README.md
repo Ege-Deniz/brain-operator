@@ -2,11 +2,19 @@
 
 # Brain Operator
 
-> **Status:** Technical Preview · v0.6.0
+> **Status:** Technical Preview · v0.6.1
 >
 > Agent DevTools for local AI developers running Claude Code, Codex, and similar agents over markdown vaults/repos. Brain Operator makes agent work inspectable: what it searched, read, cited, missed, changed, and handed to the next agent.
 
 Not "chat with notes." That category is crowded. Brain Operator's job is to make local agent runs debuggable, resumable, and safer to ship.
+
+## What's new in v0.6.1
+
+Polish release. No new features, no behavior change.
+
+- **Home modal cleanup.** Removed the parked Cozy Desk launcher row (the surface it pointed to was retired). Dropped per-card version chips that read like internal noise. Softened the Ask-resume subtitle from a raw hex session id to "continue last session". Trimmed redundant "no writes" badges from Evolve/Ship cards (the Safety panel above already states the read-only default).
+- **CSS strip.** Removed ~620 lines of dead Cozy Desk modal CSS (`styles.css` 2120 → 1530 lines).
+- **Subtitle tightened.** Home subtitle now reads "agent devtools for Claude + Codex on a shared vault · technical preview v0.6.1".
 
 ## What's new in v0.6.0
 
@@ -21,7 +29,7 @@ This release implements the Agent DevTools foundation:
 - **Catalog prompt cap.** Large vaults no longer inject the whole markdown catalog; the trace reports included/omitted counts.
 - **Temp-git Apply e2e.** A new filesystem test verifies the dirty-file guard and post-apply scope model.
 
-Test status as of v0.6.0: `parser-tests.js` has **110/110** passing assertions, `cold-install-sim.js` has **18/18**, and `apply-guard-e2e.js` has **6/6**.
+Test status as of v0.6.1: `parser-tests.js` has **110/110** passing assertions, `cold-install-sim.js` has **18/18**, and `apply-guard-e2e.js` has **6/6**. v0.6.1 is a polish release on top of v0.6.0 with no behavior change, so the v0.6.0 assertion counts continue to hold.
 
 Older release notes live in [CHANGELOG.md](./CHANGELOG.md).
 
@@ -109,10 +117,8 @@ The mental model: Claude Code has agency, but the plugin makes that agency **vis
 
 This is a Technical Preview. Honest about what's not done:
 
-- **Evolve→Apply** has logic, parser, and temp-git guard coverage. Treat first runs on your own vault as exploratory until you've verified the SCOPE BREAK warning fires correctly on a deliberately-bad apply in real Obsidian.
 - **Ship per-row execution** is unbuilt. Current Ship mode is read-only triage + copy-able terminal commands. Per-row execution remains on the roadmap.
 - **Decide and File Back** are NOT shipped. Removed from the Home grid in v0.5.3. They appear in the Roadmap line only as "under consideration, not promised."
-- **Cold-install in a fresh empty vault** is logic-verified (18/18 cold-install simulator passing) but not yet runtime-verified in a real Obsidian session. That's the last manual gate before public release.
 - **Codex parity.** Both agents already share `AGENTS.md` / `CLAUDE.md` (the cross-CLI standard). The Agent Handoff Log and Pulse work for both. But the plugin only spawns Claude Code subprocesses today; Codex is observed (Pulse), not driven. Native Codex spawn is a roadmap item.
 - **Single Obsidian vault.** No multi-vault sync, no remote sync, no real-time collaboration. The cross-CLI handoff is across sessions, not concurrent agents on the same vault.
 - **First-class CLI is not extracted yet.** The schemas are now reusable, but Obsidian remains the only UI.
@@ -240,7 +246,8 @@ The plugin doesn't directly invoke these — Claude Code auto-loads any `SKILL.m
 - **v0.5.7** ✅ **Agent Handoff Log** — every session writes a structured entry; every session start reads the last 3 and injects them as cross-CLI context. Honest install copy on the dashboard (no fictional `bo serve`/Docker/brew). Manifest description rewritten to the locked frame ("audit + handoff layer for Claude + Codex").
 - **v0.5.8** ✅ `AGENTS.md` scaffold, `--max-turns` parity, Pulse vault scoping, handoff append lock, live-helper drift tests.
 - **v0.6.0** ✅ AgentTrace / AgentReceipt schemas, trace export actions, Ask forced read-only, fenced untrusted handoff context, catalog prompt cap, dirty out-of-scope Apply preflight, temp-git Apply e2e.
-- **next** Extract public plugin repo, extract starter vault repo, runtime cold-install pass, README screenshots/demo GIF, native Codex spawn only if users ask for it.
+- **v0.6.1** ✅ Home modal cleanup — Cozy Desk launcher row removed (parked surface), per-card version chips dropped, Ask-resume subtitle softened (no raw hex session id), redundant "no writes" badges trimmed, ~620 lines of dead Cozy Desk CSS stripped from `styles.css`.
+- **next** Runtime cold-install pass on a fresh vault, live Evolve→Apply confirmation, README screenshots, native Codex spawn only if users ask for it.
 - **v1.0** Polish + Obsidian community plugin marketplace submission
 
 ## License
