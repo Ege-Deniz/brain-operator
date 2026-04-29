@@ -8,6 +8,18 @@
 
 Not "chat with notes." That category is crowded. Brain Operator's job is to make local agent runs debuggable, resumable, and safer to ship.
 
+## Technical Preview Scope
+
+This is a live technical preview for developers already comfortable with local tools.
+
+- Requires Obsidian and a logged-in Claude Code CLI.
+- Stores no Claude or GitHub credentials.
+- Runs locally over a markdown vault/repo.
+- Treats Ask/Trace as read-only; write flows are scoped, git-checked, and user-confirmed.
+- Tested on Obsidian 1.12.7 with Brain Operator v0.6.6.
+
+Expect rough edges. The goal of this preview is to validate whether agent traces, receipts, scoped apply, and handoff logs make local AI development more inspectable.
+
 ## What's new in v0.6.6
 
 Multi-reviewer hardening pass. Closes three live failure modes the v0.6.5 review surfaced.
@@ -97,6 +109,15 @@ receipt: Markdown + JSON
 ```
 
 You can debug retrieval drift the way you debug code. The missing-ref cell and Agent Receipt are the product wedge.
+
+## Proof Artifacts
+
+These are small, inspectable receipts rather than launch claims:
+
+- [Obsidian runtime load proof](docs/proofs/obsidian-runtime-v0.6.6.md) — Obsidian sees `brain-ask`, loads it, and registers all nine commands.
+- [Answer Trace example](docs/proofs/answer-trace-example.md) — sample run artifact showing catalog, searched/read/cited/missing.
+- [Safe Apply blocked example](docs/proofs/safe-apply-blocked-example.md) — what Brain Operator catches before a write flow proceeds.
+- Verification gate: parser **117/117**, cold-install **18/18**, apply-guard e2e **6/6**, secret scan, whitespace scan, and staged package sync all passed for v0.6.6.
 
 ## What this catches that normal AI chat misses
 
