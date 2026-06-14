@@ -1606,3 +1606,55 @@
   color: var(--text-normal);
   cursor: pointer;
 }
+
+/* ============================================================
+   Operator front door (engine you point) — Brain Operator warm accent
+   over Obsidian theme surfaces, so it fits any theme yet stays on-brand.
+   ============================================================ */
+.brain-ask-operator { padding: 4px 2px; }
+.brain-ask-operator-eyebrow {
+  font-family: var(--font-monospace);
+  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #e9b66b;
+}
+.brain-ask-operator-title {
+  font-size: 26px; font-weight: 650; letter-spacing: -0.02em;
+  margin: 6px 0 4px; color: var(--text-normal);
+}
+.brain-ask-operator-sub { color: var(--text-muted); font-size: 13px; max-width: 56ch; margin-bottom: 16px; }
+.brain-ask-operator-muted { color: var(--text-faint); font-size: 13px; padding: 10px 0; }
+.brain-ask-operator-card {
+  border: 1px solid var(--background-modifier-border); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 18px; background: var(--background-primary-alt);
+}
+.brain-ask-operator-card-head {
+  font-family: var(--font-monospace); font-size: 11px; color: var(--text-muted);
+  letter-spacing: 0.02em; margin-bottom: 8px;
+}
+.brain-ask-operator-card-summary { color: var(--text-normal); font-size: 14px; line-height: 1.5; }
+.brain-ask-operator-card-next { color: #e9b66b; font-size: 13px; margin-top: 6px; }
+.brain-ask-operator-card-git {
+  font-family: var(--font-monospace); font-size: 11.5px; color: var(--text-faint); margin-top: 10px;
+}
+.brain-ask-operator-card-files { margin-top: 12px; }
+.brain-ask-operator-files-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-bottom: 6px;
+}
+.brain-ask-operator-resume {
+  margin-top: 14px; font-size: 13px; padding: 7px 14px; border-radius: 7px; cursor: pointer;
+  color: #1c1610; background: #e9b66b; border: 1px solid #e9b66b; font-weight: 600;
+}
+.brain-ask-operator-resume:hover { background: #f4c688; }
+.brain-ask-operator-label {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin: 0 0 8px;
+}
+.brain-ask-operator-inputrow { display: flex; gap: 8px; }
+.brain-ask-operator-input {
+  flex: 1; padding: 9px 12px; border-radius: 8px; font-size: 14px;
+  border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal);
+}
+.brain-ask-operator-input:focus { outline: none; border-color: #e9b66b; }
+.brain-ask-operator-go {
+  padding: 9px 18px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px;
+  color: var(--text-normal); background: var(--background-primary-alt); border: 1px solid var(--background-modifier-border);
+}
+.brain-ask-operator-go:hover { border-color: #e9b66b; color: #e9b66b; }

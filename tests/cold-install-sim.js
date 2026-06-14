@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Brain Operator — Cold-install Bootstrap Simulator (v0.5.3)
+/* Brain Operator — Cold-install Bootstrap Simulator (v0.6.7)
  *
  * Run: `node .obsidian/plugins/brain-ask/tests/cold-install-sim.js`
  *
@@ -9,12 +9,12 @@
  * content. Exits 0 on success, non-zero on failure.
  *
  * What this DOES verify:
- *   - All files in BRAIN_STARTER_VAULT extract correctly (count asserted dynamically)
+ *   - All files in the governed starter scaffold create correctly (count asserted dynamically)
  *   - File paths match what the auto-trigger marker check looks for
  *     (CLAUDE.md, AGENTS.md, wiki/index.md, .claude/skills/brain-evolve/SKILL.md)
  *   - Idempotency: re-running scaffold doesn't re-write existing files
  *   - Non-empty bodies: every file has at least 50 chars (no truncation)
- *   - Placeholder presence: CLAUDE.md still has {{NAME}}/{{ROLE}}/{{STACK}}
+ *   - Context-governance presence: context-routing, scratch, and quarantined legacy skills
  *
  * What this does NOT verify:
  *   - Obsidian's actual UI/modal flow (needs Electron)
@@ -32,8 +32,8 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const Module = require('module');
 
-const MAIN_JS_PATH = path.join(__dirname, '..', 'main.js');
 const REQUIRED_MARKERS = [
   'CLAUDE.md',
   'AGENTS.md',
@@ -50,23 +50,46 @@ function assert(cond, name, detail) {
 
 function fail(msg) { console.error('FATAL: ' + msg); process.exit(2); }
 
-// ---- Extract BRAIN_STARTER_VAULT JSON literal from main.js ----
-const src = fs.readFileSync(MAIN_JS_PATH, 'utf8');
-const match = src.match(/const BRAIN_STARTER_VAULT = (\{[\s\S]*?\});\n/);
-if (!match) fail('BRAIN_STARTER_VAULT not found in main.js');
+// ---- Load runtime starter through main.js test hooks ----
+// This intentionally exercises the same transform BootstrapModal uses. The
+// raw BRAIN_STARTER_VAULT constant is historical input now; the product
+// contract is getGovernedStarterVault().
+const _origLoad = Module._load;
+Module._load = function (request) {
+  if (request === 'obsidian') {
+    class Stub {
+      constructor() {}
+      registerEvent() {}
+      registerDomEvent() {}
+      registerObsidianProtocolHandler() {}
+      addCommand() {}
+      addRibbonIcon() {}
+      addStatusBarItem() { return { addClass(){}, setText(){}, addEventListener(){}, style:{} }; }
+      addSettingTab() {}
+      loadData() { return {}; }
+      saveData() {}
+    }
+    const noop = function() {};
+    return {
+      Plugin: Stub,
+      Modal: Stub,
+      PluginSettingTab: Stub,
+      Setting: Stub,
+      Notice: noop,
+    };
+  }
+  return _origLoad.apply(this, arguments);
+};
 
-let vaultObj;
-try {
-  // The literal is a JS object expression with string keys + string values.
-  // Most string values use single-line escaped JSON; safe to eval as JS.
-  // We use Function constructor in a no-network sandbox; this file is dev-only.
-  vaultObj = new Function(`return ${match[1]}`)();
-} catch (e) {
-  fail('Failed to parse BRAIN_STARTER_VAULT: ' + e.message);
+const live = require(path.join(__dirname, '..', 'main.js')).testHooks;
+if (!live || typeof live.getGovernedStarterVault !== 'function') {
+  fail('getGovernedStarterVault test hook not found in main.js');
 }
 
+const vaultObj = live.getGovernedStarterVault();
+
 const fileCount = Object.keys(vaultObj).length;
-console.log(`\nExtracted BRAIN_STARTER_VAULT — ${fileCount} files`);
+console.log(`\nLoaded governed starter scaffold — ${fileCount} files`);
 
 // ---- Simulate scaffold into a temp dir ----
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-coldinstall-'));
@@ -121,23 +144,34 @@ for (const rel of Object.keys(vaultObj)) {
 }
 assert(smallestSize >= 50, `smallest file ≥ 50 bytes (${smallestPath} = ${smallestSize}B)`);
 
-const claudeMd = fs.readFileSync(path.join(tmpRoot, 'CLAUDE.md'), 'utf8');
-assert(claudeMd.includes('{{NAME}}'), 'CLAUDE.md has {{NAME}} placeholder');
-assert(claudeMd.includes('{{ROLE}}'), 'CLAUDE.md has {{ROLE}} placeholder');
-assert(claudeMd.includes('{{STACK}}'), 'CLAUDE.md has {{STACK}} placeholder');
-
 const indexMd = fs.readFileSync(path.join(tmpRoot, 'wiki/index.md'), 'utf8');
 assert(indexMd.length > 100, 'wiki/index.md non-trivial');
 
-// AGENTS.md must instruct the running agent to read the handoff log — that
-// instruction is the cross-CLI wedge. If it ever gets stripped from the
-// starter, the plugin's "Codex inherits Claude's last move" claim breaks
-// silently. Pin the contract here.
+const claudeMd = fs.readFileSync(path.join(tmpRoot, 'CLAUDE.md'), 'utf8');
+assert(/How To Help, Not Steer/.test(claudeMd), 'CLAUDE.md includes responsive helper modes');
+assert(/context-routing\.md/.test(claudeMd), 'CLAUDE.md points to context-routing policy');
+assert(/start outside the vault/i.test(claudeMd), 'CLAUDE.md encodes aperture default');
+
+// AGENTS.md is deliberately thin: read CLAUDE.md and context-routing, but
+// do not recreate a parallel operating system or force log/handoff context.
 const agentsMd = fs.readFileSync(path.join(tmpRoot, 'AGENTS.md'), 'utf8');
-assert(/Agent Handoff Log\.md/.test(agentsMd),
-  'AGENTS.md references wiki/operating/Agent Handoff Log.md');
-assert(/last 3 entries/i.test(agentsMd) || /last\s+\d+\s+entries/i.test(agentsMd),
-  'AGENTS.md tells the agent how many recent entries to load');
+assert(/Read `CLAUDE\.md` first/.test(agentsMd), 'AGENTS.md points to CLAUDE.md');
+assert(/context-routing\.md/.test(agentsMd), 'AGENTS.md points to context-routing');
+assert(!/Agent Handoff Log\.md/.test(agentsMd), 'AGENTS.md does not force old handoff-log preload');
+
+const evolveSkill = fs.readFileSync(path.join(tmpRoot, '.claude/skills/brain-evolve/SKILL.md'), 'utf8');
+assert(/status: historical/.test(evolveSkill), 'brain-evolve starter skill is historical');
+assert(/triggers: \[\]/.test(evolveSkill), 'brain-evolve starter skill has no triggers');
+assert(/quarantined/i.test(evolveSkill), 'brain-evolve starter skill has quarantine warning');
+
+assert(fs.existsSync(path.join(tmpRoot, 'wiki/_common/context-routing.md')),
+  'context-routing.md scaffolded');
+assert(fs.existsSync(path.join(tmpRoot, 'wiki/_scratch/README.md')),
+  '_scratch README scaffolded');
+assert(!fs.existsSync(path.join(tmpRoot, 'wiki/_common/operating-mode.md')),
+  'operating-mode.md not scaffolded');
+assert(!fs.existsSync(path.join(tmpRoot, 'wiki/_proposals/queue.md')),
+  '_proposals queue not scaffolded');
 
 // ---- Personalization audit (v0.5.3 commitment) ----
 console.log('\n--- Depersonalization audit ---');

@@ -2,6 +2,49 @@
 
 All notable changes to Brain Operator. The README keeps only the latest release; older entries live here.
 
+## v0.7.0
+
+The Operator. Brain Operator stops being a set of modes you browse and becomes one operator you point: it holds everything, is instantly ready, works on what you are doing now, and never acts on its own.
+
+- **Operator front door.** A single entry (ribbon, command, and `obsidian://brain-operator?mode=operator`). It lays your last state on the table as an offer, last session from the continuity log, what changed in git, and the thread's files via surfacing, beside an open "what are you working on?" input. Resume that thread, or start fresh with no gravity from the past. Engine you point: it never assumes you are continuing and never acts on its own.
+- **Observatory.** A local-first dashboard over your runs: a retrieval-faithfulness gauge, a per-run trend, a Claude vs Codex leaderboard, drift hotspots (pages cited but unread, or referenced but missing), and a run log. Warm Brain Operator identity (amber, JetBrains Mono, Fraunces), not a generic SaaS dashboard.
+- **Real data, no server, no keys.** Every Ask now persists its trace to a local archive, and "Open Observatory" inlines your real runs into a self-contained offline page that opens with one click. Falls back to a sample set until you have run an Ask. The archive holds real vault paths and queries, so it is gitignored and never committed.
+- **Composes the prior two releases.** v0.6.8 proactive surfacing and v0.6.9 faithfulness are now capabilities the Operator and Observatory are built from, not standalone features.
+- **Verification.** Plugin loads clean, parser suite 154/154 with no regression; the Observatory real-data loop verified end to end (the served fetch path and the offline inline path both render real receipts). Live in-Obsidian render of the Operator modal is pending a reload.
+
+## v0.6.9
+
+Retrieval Faithfulness Score — the ownable number. Brain Operator already showed *what* an agent retrieved; v0.6.9 scores *how honestly* it cited.
+
+- **A deterministic faithfulness score on every run.** Of every `[[link]]` the answer made, what share resolved to a real note AND the agent actually opened this run? `grounded / (cited + missing)`. Cited-but-unread = citation from memory/thin air; an unresolved `[[link]]` = a phantom reference. Both drag the score down. 100 = every citation was read this run; null = the answer cited nothing.
+- **No LLM, no keys, no infra.** Computed locally from data the Answer Trace already captures (`cited` / `read` / `missing` / `surfaced`). No judge model, no API key, no network — it runs on the trace you already produce.
+- **Headline number + breakdown.** The score is the lead cell in the Answer Trace, with grounded / cited-but-unread / phantom counts, plus a `faithfulness` object in the `agent-trace` schema and Markdown/JSON exports. Computed retroactively for any receipt.
+- **Why it matters.** This is the metric the incumbents skip — OpenTelemetry's GenAI conventions don't cover retrieval faithfulness or "what the agent missed." The `missing`/`cited`/`read` capture makes "did the agent cite what it actually read" measurable for local agents.
+- **Audit.** Multi-reviewer pass (code + security): no critical/high findings, and all prior v0.6.7-backlog items verified closed. Hardened the surfaced block (`cleanText` on interpolated path/reason), deduped query link-targets, fixed catalog-count reporting when the full dump is off, and guarded the vault-relative path conversion the faithfulness intersection depends on.
+- **Tests.** A new faithfulness suite covers full grounding, cited-but-unread drag, phantom-ref drag, only-phantom → 0, no-citations → NA, surfaced recall, and retroactive trace compute. Totals: parser **154/154**, cold-install **26/26**, apply-guard e2e **6/6**.
+
+## v0.6.8
+
+Proactive surfacing — the symmetric half of v0.6.7's context governance. v0.6.7 taught Ask when to **suppress** the vault (aperture/tradeoff); v0.6.8 teaches it when to **surface**, so the user stops naming pages by hand.
+
+- **Ask surfaces the most relevant pages as ranked pointers.** On context-allowed routes (knowledge, vault, execution-prep, receipts), Brain Operator scores the catalog locally — title/tag/path term overlap plus a small recency boost and a strong `[[wikilink]]` signal — and injects the top few pages as cited pointers *before* the flat catalog. Progressive disclosure: high-signal pointers first, full list as fallback.
+- **Two gates keep surfacing honest.** Route gate: aperture/tradeoff surface nothing, so the v0.6.7 suppression contract holds with no new asymmetry. Relevance gate: a query with no real match surfaces nothing, so noise never reaches the prompt.
+- **Pointers ground, they don't steer.** The surfaced block is explicitly framed as context, not direction ("NOT a priority list, backlog, or direction"). Surfacing restores connectedness; it does not re-introduce the silent steering v0.6.7 removed.
+- **Surfacing is inspectable.** A new `surfaced` cell in the Answer Trace, plus a `surfaced` field in the `agent-trace` schema and Markdown/JSON exports, shows exactly which pages were offered and why — proactive retrieval is now as debuggable as the rest of the run.
+- **Deterministic by design.** No embeddings, no network: pure local ranking that runs even when the full-catalog dump is disabled.
+- **Tests.** A new proactive-surfacing suite covers the route gate, relevance gate, entity/recency ranking, limit, prompt-block framing, and trace round-trip. Totals: parser **143/143**, cold-install **26/26**, apply-guard e2e **6/6**.
+
+## v0.6.7
+
+Context-governance pass. Shifts Brain Operator from raw persistent memory toward governed memory.
+
+- **Ask routes context before retrieval.** The system prompt now classifies Ask runs into aperture, tradeoff, execution-prep, receipts, vault lookup, or knowledge mode.
+- **Catalog and recent-handoff injection are suppressed for ideation and tradeoff routes.** "What should I build?" and choice-shaping questions no longer receive the full vault catalog or last-session context as a hidden framing menu.
+- **Context Audit replaces the old Evolve prompt.** It now audits freshness, aperture, permission, stale control planes, and executable surfaces that can bypass the new policy. It no longer reads `operating-mode.md` or proposal queues as priority truth.
+- **Ship is paused.** The legacy proposal queue flow now opens a quarantine notice and points users to Ask/Execution-Prep for chosen tasks.
+- **Starter scaffold is governed by default.** New vaults get `context-routing.md`, `_scratch/`, `Current State.md`, and quarantined historical stubs for `brain-evolve` / `brain-ship`; the old `operating-mode.md` and `_proposals/` queue are not created.
+- **Tests cover routing and starter hygiene.** Parser tests now assert ideation/tradeoff catalog + handoff suppression and governed-starter exclusion of the retired queue/control plane.
+
 ## v0.6.6
 
 Multi-reviewer hardening pass. Closes three live failure modes the v0.6.5 review surfaced.

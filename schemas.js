@@ -70,6 +70,56 @@ function buildCatalogPromptBlock(entries, maxEntries) {
   return { ...capped, text };
 }
 
+// v0.6.8 — surfaced pages: ranked pointers the operator proactively offered.
+// Ranking lives in main.js (ask-flow logic); this is the schema normalizer.
+function normalizeSurfaced(values) {
+  const out = [];
+  const seen = new Set();
+  for (const v of Array.isArray(values) ? values : []) {
+    if (!v) continue;
+    const path = typeof v === "string" ? cleanText(v, 1000) : cleanText(v.path, 1000);
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    const score = v && typeof v === "object" && Number.isFinite(Number(v.score)) ? Number(v.score) : null;
+    const reason = v && typeof v === "object" ? cleanText(v.reason, 300) : "";
+    out.push({ path, score, reason });
+    if (out.length >= 50) break;
+  }
+  return out;
+}
+
+// v0.6.9 — Retrieval Faithfulness Score. Deterministic, local, no LLM/keys:
+// grounded / (cited + missing). cited-but-unread = citation from thin air;
+// missing = phantom reference. The ownable "did it cite what it read" number.
+function computeFaithfulness(parts) {
+  const p = parts || {};
+  const readSet = new Set(Array.isArray(p.read) ? p.read : []);
+  const cited = Array.isArray(p.cited) ? p.cited : [];
+  const missing = Array.isArray(p.missing) ? p.missing : [];
+  const surfaced = Array.isArray(p.surfaced) ? p.surfaced : [];
+  const grounded = cited.filter((c) => readSet.has(c));
+  const totalRefs = cited.length + missing.length;
+  const surfacedPaths = surfaced
+    .map((s) => (typeof s === "string" ? s : s && s.path))
+    .filter(Boolean);
+  const surfacedRead = surfacedPaths.filter((s) => readSet.has(s));
+  const score = totalRefs > 0 ? Math.round((grounded.length / totalRefs) * 100) : null;
+  const label = score === null ? "no citations"
+    : score >= 90 ? "grounded"
+    : score >= 60 ? "mostly grounded"
+    : score >= 30 ? "weak"
+    : "ungrounded";
+  return {
+    score,
+    label,
+    groundedCitations: grounded.length,
+    ungroundedCitations: cited.length - grounded.length,
+    phantomRefs: missing.length,
+    surfacedRead: surfacedRead.length,
+    surfacedTotal: surfacedPaths.length,
+  };
+}
+
 function buildAgentTrace(input) {
   const trace = input || {};
   const catalogInput = trace.catalog || {};
@@ -82,6 +132,10 @@ function buildAgentTrace(input) {
   const omitted = Number.isFinite(Number(catalogInput.omitted))
     ? Number(catalogInput.omitted)
     : Math.max(0, total - included);
+  const surfaced = normalizeSurfaced(trace.surfaced);
+  const read = uniqueStrings(trace.read, 200);
+  const cited = uniqueStrings(trace.cited, 200);
+  const missing = uniqueStrings(trace.missing, 200);
   return {
     schema: TRACE_SCHEMA,
     version: SCHEMA_VERSION,
@@ -90,10 +144,12 @@ function buildAgentTrace(input) {
     mode: cleanText(trace.mode || "ask", 80),
     query: cleanText(trace.query || "", 2000),
     catalog: { total, included, omitted },
+    surfaced,
+    faithfulness: computeFaithfulness({ cited, read, missing, surfaced }),
     searched: normalizeSearches(trace.searched),
-    read: uniqueStrings(trace.read, 200),
-    cited: uniqueStrings(trace.cited, 200),
-    missing: uniqueStrings(trace.missing, 200),
+    read,
+    cited,
+    missing,
     warnings: uniqueStrings(trace.warnings, 50),
     createdAt: cleanText(trace.createdAt || nowIso(), 80),
   };
@@ -122,6 +178,16 @@ function renderAgentTraceMarkdown(traceInput) {
     "",
     "## Query",
     trace.query || "(empty)",
+    "",
+    "## Faithfulness",
+    trace.faithfulness && trace.faithfulness.score !== null
+      ? `- score: ${trace.faithfulness.score}/100 (${trace.faithfulness.label})\n- grounded citations: ${trace.faithfulness.groundedCitations} · ungrounded: ${trace.faithfulness.ungroundedCitations} · phantom refs: ${trace.faithfulness.phantomRefs}`
+      : "- n/a (no citations made)",
+    "",
+    "## Surfaced",
+    trace.surfaced.length
+      ? trace.surfaced.map((s) => `- ${s.path}${s.reason ? ` — ${s.reason}` : ""}`).join("\n")
+      : "- none",
     "",
     "## Searched",
     searched,
@@ -284,6 +350,7 @@ module.exports = {
   RECEIPT_SCHEMA,
   DEFAULT_CATALOG_LIMIT,
   buildAgentTrace,
+  computeFaithfulness,
   renderAgentTraceMarkdown,
   renderAgentTraceJson,
   buildAgentReceipt,
@@ -291,6 +358,7 @@ module.exports = {
   renderAgentReceiptJson,
   capCatalogEntries,
   buildCatalogPromptBlock,
+  normalizeSurfaced,
   parseHandoffEntries,
   dirtyScopeViolations,
   getAskPermissionMode,
