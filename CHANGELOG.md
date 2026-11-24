@@ -2,6 +2,90 @@
 
 All notable changes to Brain Operator. The README keeps only the latest release; older entries live here.
 
+## v0.9.0
+
+**The Workbench.** Brain Operator grows from a single-modal Obsidian plugin into a local-first, zero-dependency multi-agent orchestration workbench (in the mold of T3 Code and Orca) — while keeping its signature wedge: vault-contract retrieval scoping, deterministic Retrieval Faithfulness, Answer Trace, Safe Apply, and the warm amber-phosphor Observatory.
+
+### Standalone Multi-Agent Workbench (`bin/brain-operator.js` + `workbench/`)
+
+- **First-class CLI & local HTTP/SSE server.** Run `node bin/brain-operator.js serve [workspace]` (or `npm start` / `npx brain-operator`) to launch the 3-pane local Workbench over any git repository or Obsidian vault on `127.0.0.1:4141`. Zero npm runtime dependencies, zero API keys, zero external network requests.
+- **Parallel concurrent threads.** Run multiple agent threads simultaneously across workspaces with real-time Server-Sent Events streaming, live tool call timelines, inline Answer Trace strips, thread forking, pinning, search, archiving, and a `⌘K` command palette.
+- **Multi-provider CLI orchestration — Claude Code, Codex CLI, and Gemini CLI are all driven, not just observed.** Unified streaming adapter layer normalizes Claude (`--print --output-format stream-json`), Codex (`codex exec --json` / `codex exec resume`), and Gemini (`gemini -p "" -o stream-json --approval-mode ...`) into one live event stream, Answer Trace, and Faithfulness score.
+- **Mid-thread provider switching with fenced handoffs.** Start a thread on Claude Code and switch the next turn to Codex or Gemini (or fork a thread) — Brain Operator automatically compiles prior turns into a fenced, untrusted-data `brain-operator.thread-handoff` block so continuity travels safely across providers.
+- **Isolated git worktrees per thread (Orca mode).** Spin up isolated `.brain-operator/worktrees/<slug>` checkouts on `bo/<slug>` branches so multiple agents edit code or notes in parallel without file collisions. Includes a live unified Diff inspector, secret-scan preflight, scoped commit, safe merge-back (fail-closed on dirty base checkout, automatic `git merge --abort` on conflict), and clean teardown.
+- **Self-ignoring runtime state.** `.brain-operator/.gitignore` keeps `git status` clean without modifying the user's tracked root `.gitignore`. Read-only `doctor` and context checks write nothing to disk.
+- **Live Fleet & Observatory views.** Mission-control Fleet grid shows every active thread and git worktree side-by-side; the embedded Observatory charts faithfulness over time and compares Claude vs. Codex vs. Gemini from the shared `.brain-operator/runs.jsonl` archive.
+
+### Obsidian plugin upgrades (`main.js` + `styles.css`)
+
+- **Multi-thread picker & explicit per-thread resume.** `OperatorModal` now surfaces recent distinct threads (via `buildThreadList`) and `AskModal` accepts an explicit `sessionId` (`this.targetSessionId`), so selecting any earlier thread resumes that exact session instead of only `settings.lastSessionId`.
+- **Direct Workbench bridge.** New `Open Workbench` command, Operator header button, Home card, Quick dispatcher entry, and `obsidian://brain-operator?mode=workbench` URI route launch or open the local Workbench straight from Obsidian.
+- **Safety panel copy cleanup.** Removed the stale "Ship per-row" mention left over after v0.8.0 deleted Ship.
+
+### Tests
+
+- Added `tests/workbench-e2e.js` covering multi-provider CLI specs & stream-json parsing, cross-provider handoffs, UI JS syntax & offline contract, real parallel git worktrees, secret-scan commit guard, safe merge-back & conflict abort, path-traversal protection, and live HTTP + SSE streaming.
+- Added multi-thread picker & explicit `sessionId` resume coverage to `tests/parser-tests.js`.
+- Wired all 5 suites into `node tests/run-all.js` (`npm test`).
+
+## v0.8.0
+
+The brain fits. Every retrieval constant was calibrated against the bundled 19-file starter vault. Measured against a real one — 1,716 indexed notes with a 49-page knowledge core — the numbers were wrong by more than an order of magnitude, and the plugin had drifted away from the vault contract it claims to enforce.
+
+### Retrieval is scoped by the vault's own contract
+
+- **The catalog is no longer `getMarkdownFiles()`.** Archive, `_scratch/`, `output/`, `tmp/`, `raw/`, `log.md`, and `index.md` are withheld from *default* context — a direct transcription of `context-routing.md`'s "do not load index, log, a whole folder, or the archive by default". Grep and Glob still reach every one of them, which is exactly the deliberate search the contract permits.
+- **`Current State.md` decides which projects are live.** The contract says folder membership does not make something current, so the scope gate parses that page for `01_Projects/<folder>` references and withholds the rest. **Fails open**: a missing, unreadable, or project-free status page means no project filtering at all, because a status page nobody has written yet must never silently hide work.
+- **Ranking is freshness-weighted.** `active` earns a boost; `scratch`/`speculative`, `historical`/`evidence`, and `archived` are progressively demoted. Absent status is **neutral, not a penalty** — only 7 of 49 live pages carry the field, so penalising unstated pages would have demoted 86% of the knowledge layer. Demoted material stays reachable; it just cannot outrank live knowledge at comparable relevance.
+- **Above the cap, the prompt gets a folder map instead of a truncated list.** A sliced list reads as the whole vault while being an arbitrary sample.
+- **New `scope` cell in the Answer Trace** reports what was withheld and why, so an exclusion is never silent.
+- **Measured:** 1,716 indexed → 80 eligible, and the catalog now fits in list mode with nothing omitted.
+
+### Vault profiles — scope works for vaults nobody scaffolded
+
+The first cut of the above transcribed **one vault's** routing contract, so it only described that vault. Measured against other layouts it withheld **0%** of anything — the release's headline feature was a no-op for everyone but its author.
+
+- **Conventions are data, not code.** A profile maps folder patterns to semantic roles (`archive`, `scratch`, `output`, `source`, `index`, `log`, `template`) plus an optional status page and project root. Ships with **Brain Operator scaffold**, **PARA**, and **Zettelkasten / daily notes**. Everything downstream — the scope pass, the ranker, the faithfulness math — is unchanged and never learns a new concept.
+- **Detection requires evidence and a clear winner.** Two or more independent signature hits, no tie. A vault with no recognisable convention gets **no guess**, which is a better answer than a confident wrong one.
+- **Guess, then confirm — never guess, then apply.** A proposal screen shows exactly what would be withheld, grouped by reason with example paths, and changes nothing until approved. Same contract as Apply: preview, then confirm. The one exception is the scaffold profile, which auto-applies because the plugin *wrote* that layout — that is not a guess about someone else's folders.
+- **Silence is reported.** If a layout is detected but unconfirmed, or no profile applies, the Answer Trace and the Operator say so. A silent no-op is indistinguishable from a broken feature.
+- **Profiles that declare no status page keep the active-project gate off** rather than approximating it against a page that does not exist.
+- **Settings → Vault profile** shows the live withheld count, offers a preview, and lets you pick or clear a profile at any time.
+- **Regression the fixtures caught:** an early signature matched PARA's `1 Projects/` against the scaffold's `01_Projects/` and confidently misidentified PARA vaults. Signatures are now independent evidence rather than alternative spellings of one pattern, and a fixture asserts the two stay apart.
+
+### Plugin state leaves the wiki
+
+- **Ask performs zero writes to the knowledge layer.** Through v0.7.0 every Ask appended to `wiki/operating/Agent Handoff Log.md` — an unrequested write, into a folder the contract reserves for a single current-state page, under a generated header that linked `[[Decision Log]]` and `[[Operating Cadence]]` after both had been deleted.
+- **State moves to `.brain-operator/` in the vault root.** Obsidian does not index dot-folders, so it never enters the catalog, the graph, or search — but it is still inside the repo, so an agent can read it. `handoffs.jsonl` for cross-CLI continuity, `runs.jsonl` for the Observatory archive. Both are added to the vault `.gitignore`.
+- **JSONL, not Markdown.** `JSON.stringify` cannot emit a raw newline inside a string, so one record is structurally one line and hostile free text cannot forge a second entry. A damaged line costs one record instead of the file.
+- **The run archive also leaves the plugin folder**, where a plugin update would have erased the user's history.
+- **Legacy logs migrate on first read.** The original page is left in place: the plugin put it in the wiki without asking, so deleting it without asking would repeat the mistake.
+
+### The Observatory actually ships
+
+- **v0.7.0's headline feature was never committed.** `git log --all -- observatory` is empty; the command exited on "template not found", and receipt persistence sat behind `if (fs.existsSync(obsDir))` against a directory that did not exist — so **no Ask had ever archived a run**.
+- **`observatory/index.html` now exists**: a dial for mean faithfulness, a per-run trend, a Claude vs Codex table, drift hotspots (cited-but-unread and phantom refs), and a run log carrying the scope cell. Amber phosphor on charcoal, serif for voice, monospace for every number.
+- **Self-contained by contract.** Opened over `file://` with no server and no network: zero external requests, local font stacks, inline SVG grain, hand-built charts.
+
+### The cage, and the instructions to rebuild it
+
+- **Ship is deleted** (−663 lines), along with its command, Home card, and Quick entry. It had been "paused pending rewrite" since v0.6.7 while `wiki-workflows.md` listed Brain Ship under "Removed Workflows". `obsidian://…?mode=ship` now notices and opens the Operator.
+- **The retired skills are no longer scaffolded at all** — not even as the "historical" stubs v0.6.7 introduced. A stub is still a file the next agent can read and revive.
+- **The bigger find: v0.6.7 removed the cage's pages but kept shipping the documents that teach users to recreate them.** The scaffolded README, QUICKSTART, and Second Brain concept page still described `operating-mode.md` priority bands, `_proposals/queue.md`, Project Triage, Decision Log, and a Day 7 step that cron-scheduled `brain-evolve` and `brain-ship`. All three are rewritten. Cold-install now scans every scaffolded file for retired-system terms.
+- **`BRAIN_SCAFFOLD_MARKERS` no longer requires `.claude/skills/brain-evolve/SKILL.md`.** Any vault that took the contract seriously and deleted the retired skills read as un-bootstrapped forever. Markers are now `CLAUDE.md` + `context-routing.md`.
+- **`examples/starter-vault/` is generated**, not hand-copied. It had drifted three releases behind, still shipping the proposal queue and both skills *with live triggers*. `tools/sync-starter-examples.js` regenerates it and cold-install runs `--check`.
+- **The cage left the binary, not just the scaffold.** `main.js` embedded a 58 KB single-line blob of 20 starter files, layered with a removal set and an override map — 10 dropped, 7 replaced, 5 added, so **93% of the payload was shipped, parsed, and thrown away**. The dead part included the full `brain-evolve` and `brain-ship` skills *with live triggers*: excluded by path, but present in the artifact, which is precisely why they needed excluding. It is now one flat table of the 15 files that actually get written. `main.js` **344 KB → 288 KB**, longest line **58,437 → 404 chars**, and scaffold output verified byte-for-byte identical across all 15 files. A hygiene suite asserts the blob machinery is gone, that no line is a minified payload, and that the retired trigger phrases appear nowhere in the shipped file.
+
+### Operator and prompt
+
+- **The system prompt learned the current vocabulary**: the closed category set, all five status values and what each binds, that a missing status does not prove freshness, that only `Current State.md` says what is live, that `raw/` is immutable, that `_scratch/` is never auto-loaded, and that Query/Ingest/Lint/File Back are user-invoked and never scheduled.
+- **The Operator opens with what the brain considers live** — notes in context, the active projects named by Current State, and the last run's faithfulness score.
+- **Version strings come from the manifest.** The Home subtitle read "technical preview v0.6.6" against a 0.7.0 manifest for two releases.
+
+### Tests
+
+`node tests/run-all.js` runs all four suites. Totals: parser **260/260** (was 154), cold-install **27/27**, apply-guard e2e **6/6**, and a new Observatory smoke suite **19/19** that runs the page's script against a DOM stub on empty, real, and malformed archives.
+
 ## v0.7.0
 
 The Operator. Brain Operator stops being a set of modes you browse and becomes one operator you point: it holds everything, is instantly ready, works on what you are doing now, and never acts on its own.

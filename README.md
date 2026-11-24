@@ -2,126 +2,50 @@
 
 # Brain Operator
 
-> **Status:** Technical Preview · v0.7.0
+> **Status:** Technical Preview · v0.9.0 — *The Workbench*
 >
-> Agent DevTools for local AI developers running Claude Code, Codex, and similar agents over markdown vaults/repos. Brain Operator makes agent work inspectable: what it searched, read, cited, missed, changed, and handed to the next agent.
+> Local-first multi-agent Workbench and Obsidian DevTools for running **Claude Code**, **Codex CLI**, and **Gemini CLI** side by side over repositories and markdown vaults — with parallel threads, isolated git worktrees, vault-contract context scoping, deterministic Retrieval Faithfulness, live diff review, and a local Observatory.
 
-Not "chat with notes." That category is crowded. Brain Operator's job is to make local agent runs debuggable, resumable, and safer to ship.
+Think **T3 Code + Orca**, built with **zero runtime dependencies**, **zero API keys** (your existing CLI subscriptions), and Brain Operator's inspectability wedge: every turn tells you what the agent searched, read, cited, missed, and changed.
+
+## What's new in v0.9.0 — *The Workbench*
+
+Brain Operator outgrew a single blocking Obsidian modal. v0.9.0 ships a standalone, zero-dependency local multi-agent Workbench alongside the upgraded Obsidian plugin:
+
+- **Parallel multi-thread orchestration (`brain-operator serve`).** Run multiple threads simultaneously over any local git repository or Obsidian vault from a 3-pane local web studio (`127.0.0.1:4141`, Server-Sent Events streaming, `⌘K` command palette, fork/pin/archive/search). Zero npm dependencies, zero CDN requests.
+- **Multi-provider CLI driving — Claude Code, Codex CLI, and Gemini CLI.** Codex is no longer "observed, not driven." Switch providers *mid-thread* at any time: Brain Operator natively resumes same-provider sessions (`--resume` / `codex exec resume`) and automatically compiles a fenced untrusted-data `brain-operator.thread-handoff` block when bridging across providers.
+- **Isolated git worktrees per thread.** Spin up `.brain-operator/worktrees/<slug>` on `bo/<slug>` branches so multiple agents work in parallel without stepping on each other. Review colorized unified diffs, run secret-scan preflight, commit, safely merge back (fail-closed on dirty base checkout; automatic `git merge --abort` on conflict), or discard cleanly.
+- **Agent Fleet & Live Observatory.** Monitor every running thread and worktree in one Fleet view, and chart faithfulness over time with a live Claude vs. Codex vs. Gemini leaderboard backed by the shared `.brain-operator/runs.jsonl` archive.
+- **First-class CLI.** `brain-operator serve`, `brain-operator doctor`, `brain-operator threads`, `brain-operator worktrees`, and headless `brain-operator run "<prompt>" --provider claude|codex|gemini --worktree`.
+- **Upgraded Obsidian plugin.** `OperatorModal` now ships a **multi-thread picker** that resumes any prior session (not just `lastSessionId`), plus one-click **Open Workbench ↗** from the Operator, Home, command palette, or `obsidian://brain-operator?mode=workbench`.
+
+Older release notes live in [CHANGELOG.md](./CHANGELOG.md).
+
+## Quickstart (Workbench CLI — 30 seconds)
+
+Requires Node.js 18+ and at least one logged-in agent CLI (`claude`, `codex`, or `gemini`; includes a built-in `--provider sim` dry-run mode for testing).
+
+```bash
+# Inspect detected CLIs, git repo, and vault profile
+node bin/brain-operator.js doctor
+
+# Launch the local Workbench UI over any repo or Obsidian vault
+node bin/brain-operator.js serve /path/to/your/repo-or-vault
+
+# Or run a headless turn in an isolated git worktree
+node bin/brain-operator.js run "Audit retrieval scoping" --provider claude --worktree
+```
+
+Or install globally from a local clone with `npm link` and run `brain-operator`.
 
 ## Technical Preview Scope
 
 This is a live technical preview for developers already comfortable with local tools.
 
-- Requires Obsidian and a logged-in Claude Code CLI.
-- Stores no Claude or GitHub credentials.
-- Runs locally over a markdown vault/repo.
-- Treats Ask/Trace as read-only; write flows are scoped, git-checked, and user-confirmed.
-- Tested on Obsidian 1.12.7 with Brain Operator v0.6.7.
-
-Expect rough edges. The goal of this preview is to validate whether agent traces, receipts, scoped apply, and handoff logs make local AI development more inspectable.
-
-## What's new in v0.7.0
-
-**The Operator.** Brain Operator stops being a set of modes you browse and becomes one operator you point: it holds everything, is instantly ready, works on what you're doing now, and never acts on its own.
-
-- **Operator front door** (ribbon / command / `obsidian://brain-operator?mode=operator`). It lays your last state on the table as an offer, last session from the continuity log, what changed in git, and the thread's files via surfacing, beside an open "what are you working on?". Resume that thread, or start fresh with no gravity from the past.
-- **Observatory** — a local-first dashboard over your runs: a faithfulness gauge, a per-run trend, a Claude vs Codex leaderboard, drift hotspots (cited but unread, or missing), and a run log. Warm identity, amber + JetBrains Mono + Fraunces, not a generic SaaS dashboard.
-- **Real data, no server, no keys.** Each Ask persists its trace to a local archive; "Open Observatory" inlines your real runs into a self-contained offline page that opens in one click. Sample set until you've run an Ask. The archive holds real vault paths/queries, so it's gitignored and never committed.
-
-## What's new in v0.6.9
-
-Retrieval **Faithfulness Score** — the number that turns "shows you the trace" into "scores your agent's honesty." Deterministic, local, $0: no judge model, no API key, no infra.
-
-- **Every run gets a faithfulness score.** Of every `[[link]]` the answer made, what share resolved to a real note AND the agent actually opened this run? `grounded / (cited + missing)`. Cited-but-unread = a citation from thin air; an unresolved link = a phantom ref. 100 = every citation was read this run; null = nothing cited.
-- **Computed from what the trace already captures** (`cited` / `read` / `missing` / `surfaced`) — no LLM, no key, no network. It's the lead cell in the Answer Trace, with grounded / cited-but-unread / phantom counts, plus a `faithfulness` object in the schema and exports (retroactive on any receipt).
-- **The metric incumbents skip.** OpenTelemetry's GenAI conventions don't cover retrieval faithfulness or "what the agent missed" — the `missing`/`cited`/`read` capture makes it measurable for local agents.
-
-## What's new in v0.6.8
-
-Proactive surfacing. v0.6.7 taught Ask when to **suppress** the vault (ideation/tradeoff). v0.6.8 adds the symmetric half — when to **surface** — so you stop having to name pages by hand.
-
-- **Ask ranks the catalog locally and offers the few most relevant pages as cited pointers.** Title/tag/path term overlap, a small recency boost, and a strong `[[wikilink]]` signal pick the top matches; they go into the prompt *before* the flat catalog (high-signal pointers first, full list as fallback).
-- **Two gates.** Ideation/tradeoff routes still surface nothing (the v0.6.7 suppression contract holds); a query with no real match surfaces nothing, so noise never reaches the prompt.
-- **Pointers ground, they don't steer.** The surfaced block is framed as context, not direction — not a priority list, backlog, or lane.
-- **Inspectable.** A new `surfaced` cell in the Answer Trace, plus a `surfaced` field in the trace/receipt exports, shows which pages were offered and why.
-- **Deterministic.** Pure local ranking — no embeddings, no network — that runs even with the full-catalog dump disabled.
-
-## What's new in v0.6.7
-
-Context-governance pass. Brain Operator now routes context before retrieval so writeback compounds without becoming a cage.
-
-- **Ask suppresses the vault catalog and recent handoffs for ideation/tradeoff routes.** Questions like "what should I build?", "fresh ideas", "direction", or "compare these options" start from the present message and first principles instead of receiving the full vault file list or last-session context as a framing menu.
-- **Ask prompt now enforces Freshness / Aperture / Permission.** Historical pages, archives, logs, and handoffs are labeled as evidence, not steering. Receipts stay factual. Execution-prep stays small.
-- **Evolve is now a read-only Context Audit.** It checks control-plane conflicts, stale routing instructions, and executable surfaces that can bypass the new policy. It no longer audits project priority or proposal queues.
-- **Ship is paused.** The legacy proposal-queue flow is quarantined until rewritten as a responsive execution-prep tool.
-- **Starter vault scaffold is governed by default.** New scaffolds include `context-routing.md`, `_scratch/`, `Current State.md`, and quarantined historical `brain-evolve` / `brain-ship` stubs. The old `operating-mode.md` and `_proposals/` queue are not created.
-
-## What's new in v0.6.6
-
-Multi-reviewer hardening pass. Closes three live failure modes the v0.6.5 review surfaced.
-
-- **`<finding>` fence breakout closed.** The Apply system prompt fences untrusted finding text inside `<finding><text>…</text></finding>`. A finding whose body contained `</text></finding>` could escape that fence and inject instructions into the trusted region. Now `<`, `>`, and `&` are entity-encoded before interpolation, so the closing tag literally cannot appear inside the fenced text.
-- **Stdin EPIPE no longer crashes.** When the spawned `claude` process dies between spawn and stdin write, Node emits an asynchronous `'error'` event on the writable stdin. Without a listener, the renderer process throws an uncaught exception. Brain Operator now registers a no-op `'error'` listener at all four spawn sites before writing.
-- **Cancel no longer leaks the elapsed-time interval.** Pressing Escape during a long Ask/Evolve/Ship run sent SIGTERM but never cleared the 1-second `setInterval` driving the elapsed-seconds badge. The interval is now stored on the modal and cleared inside `cancelChild()`, so a cancel cleans up cleanly even when the close handler never fires.
-- **Tests pass unchanged.** Test totals stay at parser **117/117**, cold-install **18/18**, apply-guard e2e **6/6**.
-
-## What's new in v0.6.5
-
-Auth-probe hotfix and shell-safety hardening for the same call site.
-
-- **Auth probe runs again.** Claude Code CLI 2.1.121 rejects `--output-format json` on `auth status` and exits non-zero, which the previous probe interpreted as "Claude Code is not authenticated." The flag is dropped — bare `claude auth status` already returns JSON.
-- **Auth gate reads the right field.** The CLI returns `{loggedIn: true, ...}`, but the gate previously checked `auth.authenticated === false`. The gate now accepts either `loggedIn === true` or `authenticated === true`, so older and newer CLI shapes both pass.
-- **`execFileSync` everywhere we spawn `claude` for probes.** The probe at `checkClaudeAuth` no longer interpolates `claudeBinPath` into a shell string — it uses `execFileSync(binPath, ["auth", "status"], …)` so a `$(…)` or backtick in the configured binary path can no longer break out of the quote and execute arbitrary commands.
-
-## What's new in v0.6.4
-
-Obsidian bundle hotfix.
-
-- **Real loader fix.** `main.js` no longer uses `require("./schemas")`; the AgentTrace/AgentReceipt schema helpers are inlined so Obsidian can load the plugin as a single runtime file.
-- **Runtime verified.** Obsidian 1.12.7 now reports `brain-ask` loaded and registers all nine `brain-ask:*` commands.
-- **Regression covered.** Parser tests assert the forbidden local schema require is absent.
-
-## What's new in v0.6.3
-
-Load hotfix for Obsidian installs where the optional `SuggestModal` API is unavailable during plugin import.
-
-- **Quick still opens.** The Quick dispatcher now falls back to a plain modal picker instead of aborting plugin load.
-- **Better diagnostics.** If the plugin fails later during `onload()`, Brain Operator writes `.obsidian/plugins/brain-ask/load-error.log` with the stack trace.
-- **Regression covered.** Parser tests intentionally omit `SuggestModal` from the Obsidian shim and still require the real plugin entrypoint.
-
-## What's new in v0.6.2
-
-GitHub Connect closes the "fresh vault still needs manual GitHub wiring" gap.
-
-- **GitHub Connect mode.** New Home card, command, URI route, and Agent Pulse button for setting up a vault repo.
-- **Guarded automation.** If `gh` is already authenticated, Brain Operator can initialize git, add a safe `.gitignore`, create or reuse a private GitHub repo, commit, add `origin`, and push the current branch.
-- **No silent credentials.** The plugin never stores GitHub tokens and does not fake OAuth. If `gh` is missing or unauthenticated, it copies the exact `gh auth login --hostname github.com --git-protocol https --web` command and waits for the user-approved login.
-- **Remote debugging.** GitHub Connect parses existing `https`, `git@github.com:`, and `ssh://git@github.com/` remotes so users can see whether the vault already points at the intended repo.
-
-## What's new in v0.6.1
-
-Polish release. No new features, no behavior change.
-
-- **Home modal cleanup.** Removed the parked Cozy Desk launcher row (the surface it pointed to was retired). Dropped per-card version chips that read like internal noise. Softened the Ask-resume subtitle from a raw hex session id to "continue last session". Trimmed redundant "no writes" badges from Evolve/Ship cards (the Safety panel above already states the read-only default).
-- **CSS strip.** Removed ~620 lines of dead Cozy Desk modal CSS (`styles.css` 2120 → 1530 lines).
-- **Subtitle tightened.** Home subtitle now reads "agent devtools for Claude + Codex on a shared vault · technical preview v0.6.1".
-
-## What's new in v0.6.0
-
-This release implements the Agent DevTools foundation:
-
-- **AgentTrace schema.** Ask now builds a stable trace with `runId`, `agent`, `mode`, `query`, `catalog`, `searched`, `read`, `cited`, `missing`, `warnings`, and `createdAt`.
-- **AgentReceipt schema.** Ask and Apply can export portable Markdown/JSON receipts for PRs, issues, Slack, or wiki records.
-- **Trace export actions.** Answer Trace now has `Export Trace as Markdown`, `Export Trace as JSON`, and `Copy Agent Receipt`.
-- **Ask is hard read-only.** Ask/Trace always spawn Claude with `--permission-mode plan` and `Read,Grep,Glob`, regardless of the write-mode setting.
-- **Handoffs are fenced as untrusted JSON.** Prior sessions are parsed into structured fields and injected as `agent-handoff-json`, not raw markdown instructions.
-- **Safe Apply blocks dirty out-of-scope files.** Apply refuses to run when the git worktree is already dirty outside the target allowlist.
-- **Catalog prompt cap.** Large vaults no longer inject the whole markdown catalog; the trace reports included/omitted counts.
-- **Temp-git Apply e2e.** A new filesystem test verifies the dirty-file guard and post-apply scope model.
-
-v0.6.0 test status: `parser-tests.js` had **110/110** passing assertions, `cold-install-sim.js` had **18/18**, and `apply-guard-e2e.js` had **6/6**.
-
-Older release notes live in [CHANGELOG.md](./CHANGELOG.md).
+- Runs locally over any git repository or Obsidian markdown vault.
+- Stores no Claude, OpenAI, Gemini, or GitHub credentials — drives the CLIs you already authenticate locally.
+- Read-only Ask/Trace writes nothing to your knowledge layer; worktree edits stay isolated on `bo/*` branches until you review and merge; Obsidian Apply flows remain allowlisted and git-checked.
+- Standalone Workbench requires Node 18+; Obsidian plugin tested on Obsidian 1.12.7.
 
 Built for developers and AI builders who use Obsidian as a local agent workbench, not just a note archive.
 
@@ -129,7 +53,7 @@ Built for developers and AI builders who use Obsidian as a local agent workbench
 
 A fresh install in an empty vault → one click → working second brain. From scratch, in 60 seconds.
 
-The plugin scaffolds a structured vault (skills, wiki, `CLAUDE.md`, sample pages) on first launch, then operates that structure via the agent CLI you already run. No API key. Your subscription, your vault, your subprocess.
+The plugin scaffolds a governed vault (routing policy, `CLAUDE.md`, `AGENTS.md`, sample pages) on first launch, then operates that structure via the agent CLI you already run. No API key. Your subscription, your vault, your subprocess.
 
 ## The wedge
 
@@ -137,31 +61,25 @@ Other Obsidian AI plugins return an answer. Brain Operator returns the answer pl
 
 ```
 faithfulness: 88/100 (mostly grounded) — 7 grounded, 0 cited-but-unread, 1 phantom
-catalog: 89 notes, 250 included, 0 omitted
-surfaced: 3 ranked pointers (offered before the flat catalog)
-searched: 4 Grep/Glob calls
-read: 12 files
-cited: 7 resolved [[wiki-links]]
-missing: 1 phantom reference
-receipt: Markdown + JSON
+scope:        80 in scope of 1716, 1636 withheld
+              (inactive project 783 · archive 539 · build output 308 · …)
+catalog:      80 notes, 80 included, 0 omitted
+surfaced:     3 ranked pointers (offered before the flat catalog)
+searched:     4 Grep/Glob calls
+read:         12 files
+cited:        7 resolved [[wiki-links]]
+missing:      1 phantom reference
+receipt:      Markdown + JSON
 ```
 
-You can debug retrieval drift the way you debug code. The missing-ref cell and Agent Receipt are the product wedge.
-
-## Proof Artifacts
-
-These are small, inspectable receipts rather than launch claims:
-
-- [Obsidian runtime load proof](docs/proofs/obsidian-runtime-v0.6.6.md) — Obsidian sees `brain-ask`, loads it, and registers all nine commands.
-- [Answer Trace example](docs/proofs/answer-trace-example.md) — sample run artifact showing catalog, searched/read/cited/missing.
-- [Safe Apply blocked example](docs/proofs/safe-apply-blocked-example.md) — what Brain Operator catches before a write flow proceeds.
-- Verification gate: parser **154/154**, cold-install **26/26**, apply-guard e2e **6/6**, secret scan, whitespace scan, and staged package sync all passed for v0.6.9.
+You can debug retrieval drift the way you debug code. The scope, missing-ref, and faithfulness cells are the product wedge.
 
 ## What this catches that normal AI chat misses
 
 - The answer cited a `[[Page]]` that does not exist.
+- The answer cited a page it never opened this run.
 - The agent searched broadly but read the wrong files.
-- The vault catalog was too large and part of it was omitted from the prompt.
+- Retrieval was ranking your archive and build output alongside live knowledge.
 - A previous agent handoff contains hostile or instruction-like text.
 - Apply would run while unrelated files are already dirty.
 - Apply changed a file outside the declared target allowlist.
@@ -171,12 +89,16 @@ These are small, inspectable receipts rather than launch claims:
 
 | Mode | What it does | Status |
 |------|--------------|--------|
+| **Operator** | The front door. Shows what your vault calls live, your last thread, and one input. Resume, or start fresh. | Shipped |
 | **Ask** | Routing-aware Q&A that surfaces relevant pages as ranked pointers, with Answer Trace and Agent Receipt export | Shipped |
+| **Observatory** | Local dashboard: faithfulness over time, per-agent comparison, drift hotspots, run log | Shipped |
 | **Context Audit** | Read-only check for freshness, aperture, permission, and stale control-plane leaks | Shipped |
-| **Ship** | Legacy proposal queue flow | Paused pending rewrite |
 | **Agent Pulse** | Timeline of recent Claude + Codex sessions, generated images, automations, git state | Shipped; read-only |
+| **GitHub Connect** | Guarded git init, private repo create/reuse, and push | Shipped |
 
-**Roadmap (under consideration, not promised):** Decide (read/write Decision Log with flip criteria), File Back (file the current conversation as a wiki page). Both intentionally cut from v0.5.x to keep the plugin honest about what works today.
+**Removed in v0.8.0:** Ship. It had been paused since v0.6.7, and the governed vault contract lists it under "Removed Workflows". Deleting it matches the brain; rewriting it would re-import the cage.
+
+**Roadmap (under consideration, not promised):** Decide (read/write Decision Log with flip criteria), File Back (file the current conversation as a wiki page, permission-gated). Both intentionally cut to keep the plugin honest about what works today.
 
 ## Install
 
@@ -187,30 +109,27 @@ These are small, inspectable receipts rather than launch claims:
 ### Plugin install (3 minutes)
 1. Drop this folder into `<your-vault>/.obsidian/plugins/brain-ask/`
 2. Obsidian → Settings → Community plugins → enable **Brain Operator**
-3. **First launch in an empty vault**: a modal pops asking *"Scaffold a Brain in this vault?"* → click **Scaffold Brain** → governed starter files are written: `CLAUDE.md`, `AGENTS.md`, `context-routing.md`, `_scratch/`, `Current State.md`, and quarantined legacy skill stubs.
+3. **First launch in an empty vault**: a modal asks *"Scaffold a Brain in this vault?"* → click **Scaffold Brain** → governed starter files are written: `CLAUDE.md`, `AGENTS.md`, `wiki/_common/context-routing.md`, `wiki/_common/wiki-workflows.md`, `wiki/_scratch/`, `Current State.md`, and a small sample wiki.
 4. Open `CLAUDE.md` and `wiki/_common/context-routing.md` → review the operating contract.
-5. Run **Ask**: *"What's in my wiki right now?"* — verifies the operator works.
+5. Click the ribbon to open the **Operator** and ask something.
 
 That's it. No separate repo to clone. No manual skill installation. No structure to learn before you can use it.
 
-> If you want to inspect the governed starter files before installing, run the plugin once on a throwaway empty vault — the BootstrapModal previews the file list before scaffolding. (A standalone public starter-vault repo is on the v1.0 milestone; until then the canonical source is `getGovernedStarterVault()` inside `main.js`.)
+> To inspect the governed starter files before installing, browse [`examples/starter-vault/`](examples/starter-vault). It is generated from `getGovernedStarterVault()` by `tools/sync-starter-examples.js`, and a test asserts the two stay identical — so what you read there is exactly what gets written.
 
 ## Safety Model
 
 Brain Operator never silently rewrites your vault.
 
-- **Ask** and **Trace** are read-only — `--permission-mode plan` enforced.
+- **Ask, Trace, and the Operator write nothing to your knowledge layer.** `--permission-mode plan` is enforced regardless of the write-mode setting.
+- **Plugin state lives outside the wiki.** Continuity and run history go to `.brain-operator/` in the vault root — a dot-folder Obsidian does not index, so it never enters your catalog, graph, or search. Added to `.gitignore` automatically; it holds real vault paths and query text.
 - **Context Audit** runs read-only and looks for stale authority, routing conflicts, and executable surfaces that bypass the policy. Apply remains opt-in per finding and target-path allowlisted.
-- **Ship** is paused because the old proposal-queue flow is intentionally quarantined.
 - Apply refuses to start if `git diff --name-only HEAD` shows dirty files outside the Apply target allowlist.
 - Every write run ends with `git diff --name-only HEAD`. If any newly modified path falls outside the declared allowlist, a red warning surfaces before the run is marked complete.
-- Agent handoffs are stored as plain markdown for humans. Eligible status/implementation prompts receive them only as fenced JSON with explicit "untrusted data" labels; Aperture and Tradeoff prompts suppress them entirely.
-- Agent Receipts can be copied as Markdown or JSON so a run can be reviewed outside Obsidian.
-- Brain Operator writes runtime handoffs to `wiki/operating/Agent Handoff Log.md`. Wiki-domain operations still update `wiki/log.md` when the underlying brain workflow does so.
-- Default permission mode is `acceptEdits`, not `bypassPermissions`. Bypass is kept as an advanced toggle, labeled private-only.
-- If a copied `data.json` contains `bypassPermissions` without an explicit private opt-in flag, Brain Operator resets it to `acceptEdits` on load.
+- Agent handoffs are injected only as fenced JSON explicitly labelled untrusted data. Aperture and Tradeoff prompts suppress them entirely.
+- Default permission mode is `acceptEdits`, not `bypassPermissions`. Bypass is kept as an advanced toggle, labeled private-only. A copied `data.json` containing `bypassPermissions` without an explicit private opt-in is reset to `acceptEdits` on load.
 - `data.json` is gitignored (contains binary paths + last session ID, never credentials).
-- Agent Pulse and the Bootstrap flow do not spawn any LLM call — pure filesystem and `git` reads.
+- Agent Pulse, the Observatory, and the Bootstrap flow spawn no LLM call — pure filesystem and `git` reads.
 
 The mental model: Claude Code has agency, but the plugin makes that agency **visible, scoped, and reversible**.
 
@@ -218,35 +137,39 @@ The mental model: Claude Code has agency, but the plugin makes that agency **vis
 
 This is a Technical Preview. Honest about what's not done:
 
-- **Ship rewrite is pending.** The old proposal-queue flow is paused; the replacement should be a responsive execution-prep mode after the user chooses a task.
-- **Decide and File Back** are NOT shipped. Removed from the Home grid in v0.5.3. They appear in the Roadmap line only as "under consideration, not promised."
-- **Codex parity.** Both agents already share `AGENTS.md` / `CLAUDE.md` (the cross-CLI standard). The Agent Handoff Log and Pulse work for both. But the plugin only spawns Claude Code subprocesses today; Codex is observed (Pulse), not driven. Native Codex spawn is a roadmap item.
-- **GitHub auth is user-approved.** GitHub Connect automates repo creation and push after `gh` is authenticated, but the login itself still requires the user to approve GitHub OAuth/device auth. No token is stored in Brain Operator settings.
-- **Single Obsidian vault.** No multi-vault sync, no managed sync scheduler, no real-time collaboration. GitHub Connect wires a git remote; tools like Obsidian Git can use that remote for ongoing sync.
-- **First-class CLI is not extracted yet.** The schemas are now reusable, but Obsidian remains the only UI.
+- **Provider CLIs require local installation and login.** Brain Operator drives `claude`, `codex`, and `gemini` via their official CLIs; whichever CLI you pick must be installed and logged in locally.
+- **Three vault profiles, not every layout.** Brain Operator scaffold, PARA, and Zettelkasten are recognised. General code repositories run cleanly with no vault exclusions, reported honestly in the Context inspector and `scope` trace cell.
+- **Localhost workbench, not hosted SaaS.** The Workbench server binds to `127.0.0.1` with zero cloud sync or multi-user collaboration.
+- **GitHub auth is user-approved.** GitHub Connect automates repo creation and push after `gh` is authenticated, but the login itself requires you to approve GitHub OAuth/device auth. No token is stored.
 
 ## How it works
 
 ```
 Obsidian plugin
-  ├─ schemas.js       -> AgentTrace, AgentReceipt, catalog caps, handoff parsing
-  ├─ BootstrapModal   ─→ first-launch governed starter scaffold
-  ├─ HomeModal        ─→ mode launcher with status badges
-  ├─ AskModal         ─→ spawns claude with context-routed preamble + tools
-  ├─ EvolveModal      ─→ read-only context-governance audit
-  ├─ ShipModal        ─→ paused legacy proposal-queue notice
-  ├─ GitHubConnect    ─→ local git init + gh repo create/reuse + private push
-  ├─ AgentPulseModal  ─→ pure filesystem reads (Claude + Codex sessions, git, images)
-  ├─ QuickModeModal   ─→ fuzzy mode dispatcher (SuggestModal)
-  └─ BrainAskSettingTab — claude/codex paths, permission mode, evolve pages
+  ├─ vault profiles    ─→ folder patterns → roles (scaffold · PARA · Zettelkasten)
+  ├─ catalog scope     ─→ profile exclusions + Current State active projects
+  ├─ BootstrapModal    ─→ first-launch governed starter scaffold
+  ├─ OperatorModal     ─→ front door: what's live, last thread, one input
+  ├─ AskModal          ─→ spawns claude with context-routed preamble + tools
+  ├─ Observatory       ─→ offline dashboard over .brain-operator/runs.jsonl
+  ├─ EvolveModal       ─→ read-only context-governance audit
+  ├─ GitHubConnect     ─→ local git init + gh repo create/reuse + private push
+  ├─ AgentPulseModal   ─→ pure filesystem reads (Claude + Codex sessions, git, images)
+  ├─ QuickModeModal    ─→ fuzzy mode dispatcher
+  └─ BrainAskSettingTab — claude/codex paths, permission mode, audit pages
+
+vault-root state (gitignored, not indexed by Obsidian)
+  .brain-operator/handoffs.jsonl   cross-CLI continuity
+  .brain-operator/runs.jsonl       Observatory run archive
+  .brain-operator/observatory.html generated dashboard
 
 claude invocation:
   --print --output-format stream-json --verbose
   --include-partial-messages
   --permission-mode plan             [Ask/Context Audit/Apply-plan]
   --permission-mode acceptEdits      [Apply-execute only]
-  --allowedTools Read,Grep,Glob        [read-only flows]
-  --allowedTools Read,Edit             [Apply-execute only]
+  --allowedTools Read,Grep,Glob      [read-only flows]
+  --allowedTools Read,Edit           [Apply-execute only]
   --append-system-prompt "<vault conventions>"
   --session-id <uuid>  [or --resume <last>]
 
@@ -255,40 +178,40 @@ stream-json events → modal:
   • progressive answer (token deltas via --include-partial-messages)
   • Answer Trace panel after completion
   • Agent Receipt export as Markdown / JSON
-  • structured fenced blocks (evolve-json, ship-json) parsed for card UI
 ```
 
-No API key. Uses Claude Code's existing OAuth. Claude's native tools do retrieval — the plugin injects the vault catalog + conventions as a system prompt and observes what Claude actually does via tool-use events.
+No API key. Uses Claude Code's existing OAuth. Claude's native tools do retrieval — the plugin scopes and injects the vault catalog + conventions as a system prompt, and observes what Claude actually does via tool-use events.
 
 ## The Answer Trace
 
-Seven cells shown after every Ask:
+Eight cells shown after every Ask:
 
 - **faithfulness** — the headline score (0–100): of every `[[link]]` the answer made, the share that resolved to a real note and was actually read this run, with grounded / cited-but-unread / phantom counts
-- **catalog** — total markdown notes plus prompt-included / omitted counts
-- **surfaced** — pages the operator proactively offered as ranked pointers, with the match reason (clickable → opens the note in Obsidian)
+- **scope** — how many notes were eligible for default context out of the vault total, and why the rest were withheld
+- **catalog** — in-scope notes plus prompt-included / omitted counts
+- **surfaced** — pages the operator proactively offered as ranked pointers, with the match reason (clickable → opens the note)
 - **searched** — actual `Grep` / `Glob` calls with their query strings
-- **read** — files Claude actually opened (clickable → opens the note in Obsidian)
+- **read** — files Claude actually opened (clickable → opens the note)
 - **cited** — `[[wiki-links]]` in the answer that resolved to real notes
 - **missing refs** — `[[wiki-links]]` that don't resolve (typos, or proposed stubs)
 
-Each trace has three export actions:
+Each trace has three export actions: **Export Trace as Markdown**, **Export Trace as JSON** (`brain-operator.agent-trace@1`), and **Copy Agent Receipt** (`brain-operator.agent-receipt@1`).
 
-- **Export Trace as Markdown** — human-readable run artifact.
-- **Export Trace as JSON** — stable `brain-operator.agent-trace@1` payload.
-- **Copy Agent Receipt** — `brain-operator.agent-receipt@1` with trace, verification, handoff, and changed-file fields.
+## The Observatory
 
-This turns AI retrieval from a black box into a debuggable process. The thing Claude-in-terminal cannot give you ergonomically.
+A local-first dashboard over your run history. Faithfulness dial, per-run trend, Claude vs Codex comparison, drift hotspots (pages cited but unread, and links that resolve to nothing), and a run log.
+
+Self-contained: it opens over `file://` with no server and makes zero external requests. Every Ask appends its trace to `.brain-operator/runs.jsonl`; the dashboard inlines your real runs at open time and falls back to a sample set until you have run one.
 
 ## Surfaces (where you invoke modes)
 
-- **Ribbon** (left rail) — single brain-circuit icon → Home modal
+- **Ribbon** (left rail) — brain-circuit icon → **Operator**
 - **Command palette** (`Cmd+P`) — every mode registered as a command
-- **Quick dispatcher** — fuzzy mode picker via SuggestModal; bind a hotkey for fastest access
-- **Status bar** — "Brain" entry, click → Home
+- **Quick dispatcher** — fuzzy mode picker; bind a hotkey for fastest access
+- **Status bar** — "brain · op" entry, click → Home
 - **Right-click selected text** → "Ask about <selection>" pre-fills AskModal
 - **Right-click any markdown note** → "Ask about [[note]]" + "Open Home"
-- **URI handler** — `obsidian://brain-operator?mode=ask` (or evolve / ship / pulse / home / fileback). Lets external pages or shell commands fire plugin modes.
+- **URI handler** — `obsidian://brain-operator?mode=operator` (or ask / evolve / pulse / github / home)
 
 ## Settings reference
 
@@ -301,7 +224,7 @@ This turns AI retrieval from a black box into a debuggable process. The thing Cl
 - **MCP config path** — advanced; wire to `obsidian-local-rest-api` via `mcp-tools`
 
 **Ask**
-- Retrieval depth, max note chars, include catalog in prompt, catalog prompt limit, stream token deltas, show tool events.
+- Retrieval depth, max note chars, include catalog in prompt, catalog prompt limit, surfaced-pointer limit, stream token deltas, show tool events.
 
 **Context Audit**
 - Key policy pages — comma-separated vault-relative paths the audit reads first.
@@ -309,67 +232,75 @@ This turns AI retrieval from a black box into a debuggable process. The thing Cl
 **Agent Pulse**
 - Recent items per lane.
 
-## Bundled skills
-
-The Bootstrap flow installs quarantined legacy stubs into `.claude/skills/`:
-
-- **`brain-evolve`** — historical stub, triggers disabled
-- **`brain-ship`** — historical stub, triggers disabled
-
-The old autonomous audit/queue skills are preserved as evidence, not enabled behavior. Rewrite them only if they obey `wiki/_common/context-routing.md`.
-
 ## Brain conventions enforced via system prompt
 
 - Wiki-links basename-only: `[[Page Name]]`
 - PARA split: `01_Projects/` = action, `wiki/` = LLM-owned knowledge, `raw/` = immutable sources
-- Frontmatter: `title`, `category`, `tags` (lowercase-hyphenated), `sources`, `created`, `updated` (ISO 8601 YYYY-MM-DD)
-- Log format: `## [YYYY-MM-DD] verb | Subject` with verbs `ingest/query/lint/update/create/decide/score/kill/evolve/ship`
+- Frontmatter: `title`, `category` (one of career / projects / education / life / finance / operating / concepts), `tags` (lowercase-hyphenated), `sources`, `created`, `updated` (ISO 8601), `status`
+- Status vocabulary: `active` binds; `historical` / `archived` are evidence; `scratch` / `speculative` are never binding; a missing status does not prove freshness
+- Only `wiki/operating/Current State.md` says what is live — folder membership does not
+- Maintenance workflows (Query / Ingest / Lint / File Back) are user-invoked and never scheduled
 - Hard bans: no emoji in wiki, no cringe/hype, no hallucinated packages, direct professional tone
+
+## Tests
+
+```bash
+node tests/run-all.js
+```
+
+| Suite | Covers |
+|---|---|
+| `parser-tests.js` | parsers, schemas, routing, catalog scope, freshness weighting, plugin state, system prompt, multi-thread picker |
+| `cold-install-sim.js` | first-launch scaffold on a temp vault, retired-system scan, examples parity |
+| `apply-guard-e2e.js` | Apply dirty-worktree guard against real git |
+| `observatory-smoke.js` | the dashboard renders on empty, real, and malformed archives |
+| `workbench-e2e.js` | multi-provider adapters, real parallel git worktrees, merge/conflict safety, live HTTP + SSE server, UI offline contract |
+
+Verification gate for v0.9.0: parser **267/267**, cold-install **27/27**, apply-guard e2e **6/6**, observatory smoke **19/19**, workbench e2e **52/52** (**371/371** total).
+
+## Proof Artifacts
+
+Small, inspectable receipts rather than launch claims:
+
+- [v0.9.0 design spec](docs/superpowers/specs/2026-11-24-brain-operator-v0.9.0-workbench.md) — architecture and safety invariants for the multi-agent Workbench.
+- [v0.8.0 design spec](docs/superpowers/specs/2026-07-28-brain-operator-v0.8.0-design.md) — the measurements behind vault-contract scoping, including two corrections that measurement forced.
+- [Obsidian runtime load proof](docs/proofs/obsidian-runtime-v0.6.6.md) — Obsidian sees `brain-ask`, loads it, and registers its commands.
+- [Answer Trace example](docs/proofs/answer-trace-example.md) — sample run artifact showing catalog, searched/read/cited/missing.
+- [Safe Apply blocked example](docs/proofs/safe-apply-blocked-example.md) — what Brain Operator catches before a write flow proceeds.
 
 ## Coexists with
 
 - `obsidian-local-rest-api` — consumable via `--mcp-config` for MCP-based retrieval (advanced)
-- `mcp-tools` — Brain Operator handles **prompt injection + trace + bootstrap**, not vault API
+- `mcp-tools` — Brain Operator handles **prompt scoping + trace + bootstrap**, not vault API
 - `obsidian-git`, `obsidian-excalidraw-plugin` — no conflict; GitHub Connect prepares the underlying git remote that Obsidian Git can later sync
-- Any Claude Code skills you have installed locally — auto-loaded alongside the bundled three
+- Any Claude Code skills you have installed locally
 
 ## Roadmap
 
 - **v0.2** ✅ Ask + inline Answer Trace + CLI subprocess + session resume
 - **v0.3** ✅ Codex detection, Agent Pulse timeline, Evolve dry-run audit, safer default permission mode
-- **v0.4** ✅ Structured Evolve JSON contract + two-step Apply with target_paths allowlist enforcement (apply path unverified live)
-- **v0.4.1** ✅ Ship — queue triage with autonomy classification + recommended pick
-- **v0.4.5** ✅ Single ribbon, URI handler, right-click menus, file menu, status bar, Quick dispatcher, hover affordances
-- **v0.5.0** ✅ **BootstrapModal** — first-launch scaffold of 19 starter files. Plugin alone is now enough to create a brain.
-- **v0.5.1** ✅ Auto-trigger guard (only pops on truly empty vaults), adaptive modal copy for non-empty vaults, vault-emptiness contract tests.
-- **v0.5.2** ✅ Preflight CLI auth check, elapsed-time badge, bounded stderr buffer, surfaced parse errors.
-- **v0.5.3** ✅ Depersonalization (system prompts no longer name a specific user), session-id resume verification, mode count trimmed to four working modes (Decide and File Back removed).
-- **v0.5.4** ✅ Apply-flow polish (auto-plan, single primary button), git binary resolver for Apple Silicon Homebrew, **pre-flight git gate** (Apply refuses to run if git verification can't be set up), close-state guards on async DOM writes, locale-independent `not-a-repo` detection.
-- **v0.5.5** ✅ Bundled starter README depersonalized, last Evolve-prompt Ege reference removed, status-bar emoji removed, README roadmap refreshed.
-- **v0.5.6** ✅ `--max-turns` cap on Ask (default 12), Apply-plan parser schema-validated with `plan-json` block, 15 new tests (61/61 passing total).
-- **v0.5.7** ✅ **Agent Handoff Log** — every session writes a structured entry; every session start reads the last 3 and injects them as cross-CLI context. Honest install copy on the dashboard (no fictional `bo serve`/Docker/brew). Manifest description rewritten to the locked frame ("audit + handoff layer for Claude + Codex").
-- **v0.5.8** ✅ `AGENTS.md` scaffold, `--max-turns` parity, Pulse vault scoping, handoff append lock, live-helper drift tests.
-- **v0.6.0** ✅ AgentTrace / AgentReceipt schemas, trace export actions, Ask forced read-only, fenced untrusted handoff context, catalog prompt cap, dirty out-of-scope Apply preflight, temp-git Apply e2e.
-- **v0.6.1** ✅ Home modal cleanup — Cozy Desk launcher row removed (parked surface), per-card version chips dropped, Ask-resume subtitle softened (no raw hex session id), redundant "no writes" badges trimmed, ~620 lines of dead Cozy Desk CSS stripped from `styles.css`.
-- **v0.6.2** ✅ GitHub Connect — guarded local git init, `.gitignore` hardening, GitHub CLI auth detection, private repo create/reuse, origin wiring, commit, push, and remote parsing tests.
-- **v0.6.3** ✅ Load hotfix — Quick dispatcher no longer requires `SuggestModal` at import time; `onload()` failures now write `load-error.log`.
-- **v0.6.4** ✅ Obsidian bundle hotfix — `main.js` is self-contained at runtime; Obsidian loads `brain-ask` and registers all commands.
-- **v0.6.5** ✅ Auth-probe hotfix — drops the `--output-format json` flag the current Claude Code CLI rejects on `auth status`, reads the `loggedIn` field returned by the CLI, and switches the probe to `execFileSync` so a `$(…)` in the configured binary path can no longer break out of the shell quote.
-- **v0.6.6** ✅ Multi-reviewer hardening — `<finding>` fence breakout closed via XML entity-encoding, stdin EPIPE no longer crashes the renderer (no-op `'error'` listener attached at all spawn sites before write), and Escape during a long run now clears the elapsed-time interval instead of leaking it.
-- **v0.6.7** ✅ Context-governance pass — Ask route classification, catalog suppression for ideation/tradeoff, Context Audit replacing Evolve's old operating-layer audit, Ship paused, and governed starter scaffold.
-- **v0.6.8** ✅ Proactive surfacing — the surface half of route classification: local relevance ranking + route/relevance gates offer the top pages as cited pointers (framed as context, not direction), a new `surfaced` Answer Trace cell, and a `surfaced` field in the agent-trace schema.
-- **v0.6.9** ✅ Retrieval Faithfulness Score — deterministic, local, no-LLM scoring of "did the agent cite what it actually read" (`grounded / (cited + missing)`); headline Answer Trace cell + `faithfulness` field in the schema/exports, computed retroactively for any receipt.
-- **next** Runtime cold-install pass on a fresh vault, live Context Audit→Apply confirmation, README screenshots, native Codex spawn only if users ask for it.
-- **v1.0** Polish + Obsidian community plugin marketplace submission
+- **v0.4** ✅ Structured Evolve JSON contract + two-step Apply with `target_paths` allowlist enforcement
+- **v0.4.5** ✅ Single ribbon, URI handler, right-click menus, file menu, status bar, Quick dispatcher
+- **v0.5.0** ✅ **BootstrapModal** — first-launch scaffold. Plugin alone is enough to create a brain.
+- **v0.5.7** ✅ **Agent Handoff Log** — structured cross-CLI continuity
+- **v0.6.0** ✅ AgentTrace / AgentReceipt schemas, trace exports, Ask forced read-only, fenced untrusted handoff context, catalog prompt cap
+- **v0.6.2** ✅ GitHub Connect — guarded git init, private repo create/reuse, push
+- **v0.6.5–0.6.6** ✅ Auth-probe hotfix, shell-safety hardening, `<finding>` fence breakout closed, stdin EPIPE, cancel interval leak
+- **v0.6.7** ✅ Context-governance pass — route classification, catalog suppression for ideation/tradeoff, Context Audit
+- **v0.6.8** ✅ Proactive surfacing — local relevance ranking offered as cited pointers
+- **v0.6.9** ✅ Retrieval Faithfulness Score — deterministic, local, no-LLM
+- **v0.7.0** ✅ Operator front door · ⚠️ Observatory was announced but never committed; shipped in v0.8.0
+- **v0.8.0** ✅ Vault-contract retrieval scoping, `Current State` active-project gate, freshness weighting, plugin state out of the wiki, Observatory shipped for real, Ship and the retired-skill scaffold deleted, generated example vault
+- **v0.9.0** ✅ **The Workbench** — standalone local multi-agent orchestration studio (`brain-operator serve` + CLI), parallel threads with SSE streaming, native Claude + Codex + Gemini CLI driving, mid-thread provider switching with fenced handoffs, isolated git worktrees with diff review and fail-closed merge-back, Fleet & live Observatory views, plus multi-thread picker and Workbench bridge in Obsidian
+- **next** Configurable scope globs, PR creation/review from worktrees, desktop wrapper / mobile companion, README screenshots
+- **v1.0** Polish + Obsidian community plugin marketplace & npm publication
 
 ## License
 
-MIT. Bundled `karpathy-guidelines` skill is also MIT (forrestchang/andrej-karpathy-skills).
+MIT.
 
 ## Credits
 
-Built by Ege Deniz. Bundled skills:
-- `brain-evolve` and `brain-ship` — original work, generic-rewritten for distribution
-- `karpathy-guidelines` — inspired by [Andrej Karpathy's observations on LLM coding pitfalls](https://x.com/karpathy/status/2015883857489522876), packaged by [forrestchang](https://github.com/forrestchang/andrej-karpathy-skills)
+Built by Ege Deniz. The bundled `karpathy-guidelines` skill is MIT, inspired by [Andrej Karpathy's observations on LLM coding pitfalls](https://x.com/karpathy/status/2015883857489522876), packaged by [forrestchang](https://github.com/forrestchang/andrej-karpathy-skills).
 
 If you ship a brain that compounds, post about it. The architecture only proves out at scale if multiple brains run on it.

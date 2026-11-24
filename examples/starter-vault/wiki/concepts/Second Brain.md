@@ -1,44 +1,44 @@
+<!-- GENERATED FILE — do not edit by hand.
+     Source: getGovernedStarterVault() in main.js
+     Regenerate: node tools/sync-starter-examples.js -->
 ---
 title: Second Brain
 category: concepts
 tags: [second-brain, knowledge-management, meta]
 sources: []
 created: 2026-04-25
-updated: 2026-04-25
+updated: 2026-07-28
+status: active
 ---
 
 # Second Brain
 
-A working definition for this vault: a *second brain* is a structured filesystem an LLM can read, write, and audit, that compounds over time without you having to maintain it manually.
+A working definition for this vault: a second brain is a structured filesystem an agent can read and search at full fidelity, and write to when asked.
 
-This is a sample page. You can keep, edit, or delete it.
+This is a sample page. Keep it, edit it, or delete it.
 
 ## Why filesystem-first
 
-Most "second brain" tools are databases hidden behind opinionated UIs (Notion, Reflect, Tana, etc). They're nice. They also lock your knowledge into someone else's schema and make it hard to grant an LLM read/write access without going through their API.
+Most second-brain tools are databases behind an opinionated UI. They are pleasant, and they lock your knowledge into someone else's schema, reachable by an agent only through their API.
 
-A markdown wiki is the opposite: every page is plain text, every link resolves locally, and any LLM with shell access can ingest it at full fidelity.
+A markdown wiki is the opposite: every page is plain text, every link resolves locally, and any tool with filesystem access can read all of it. The trade-off is no UI sugar and no built-in collaboration. For a personal brain, durability wins.
 
-The trade-off: no UI sugar, no built-in collaboration, no view configurability. For a personal brain, those losses are worth the durability of plain text + the ability to point any future tool at the same files.
+## What compounding actually means
 
-## What "compounding" means here
+Compounding is a property of the material, not of a schedule. Pages get more useful as they accumulate links, corrections, and evidence — because you added those things when you had a reason to.
 
-Three loops:
+It is tempting to automate the accumulation: a loop that audits the wiki, generates proposals, and works through them. That trade is worse than it looks. Automation produces pages nobody decided to write, and once those pages exist they start acting as context — the brain begins recommending directions derived from its own output rather than from you.
 
-1. **Ingest loop** — sources land in `raw/`, the LLM summarizes them into wiki pages, cross-links emerge automatically.
-2. **Audit loop** — `brain-evolve` periodically scans for stale claims, phantom links, and unfilled goal-adjacent gaps. The wiki self-heals.
-3. **Ship loop** — `brain-ship` reads queued proposals and either executes them, drafts them, or surfaces exact next-action commands. Ideas don't accumulate as text.
-
-The brain compounds when all three loops run on a cadence.
+The version that holds up: retrieval is automatic, writing is deliberate.
 
 ## What this is not
 
-- A chat wrapper. Chat is volatile. The brain is durable.
-- A note-taking app. Note-taking is for capture; the brain is for synthesis.
-- A research assistant. The brain is the long-running counterpart to ad-hoc research; it remembers.
+- A chat wrapper. Chat is volatile; the brain is durable.
+- A note-taking app. Capture is for later; this is for what survived.
+- An operating system. It has no queue, no ranking, no cadence, and no opinion about what you should do next.
 
 ## See Also
 
-- [[../_common/operating-mode]] — how the brain prioritizes
-- [[../operating/Operating Cadence]] — the weekly rhythm
-- [[../../CLAUDE]] — the conventions
+- [[context-routing]] — authority, retrieval, aperture, and permission
+- [[wiki-workflows]] — the optional maintenance operations
+- [[Current State]] — the only page that says what is live

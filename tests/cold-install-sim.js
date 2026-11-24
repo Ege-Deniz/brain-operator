@@ -11,10 +11,11 @@
  * What this DOES verify:
  *   - All files in the governed starter scaffold create correctly (count asserted dynamically)
  *   - File paths match what the auto-trigger marker check looks for
- *     (CLAUDE.md, AGENTS.md, wiki/index.md, .claude/skills/brain-evolve/SKILL.md)
+ *     (CLAUDE.md, AGENTS.md, wiki/index.md, wiki/_common/context-routing.md)
  *   - Idempotency: re-running scaffold doesn't re-write existing files
  *   - Non-empty bodies: every file has at least 50 chars (no truncation)
- *   - Context-governance presence: context-routing, scratch, and quarantined legacy skills
+ *   - Context-governance presence: context-routing and the scratch sandbox
+ *   - Absence of the retired autonomous skills (v0.8.0)
  *
  * What this does NOT verify:
  *   - Obsidian's actual UI/modal flow (needs Electron)
@@ -34,11 +35,13 @@ const path = require('path');
 const os = require('os');
 const Module = require('module');
 
+// v0.8.0 — markers must be files a governed brain KEEPS. Requiring a retired
+// skill meant any vault that deleted it read as un-bootstrapped forever.
 const REQUIRED_MARKERS = [
   'CLAUDE.md',
   'AGENTS.md',
   'wiki/index.md',
-  '.claude/skills/brain-evolve/SKILL.md',
+  'wiki/_common/context-routing.md',
 ];
 
 let passed = 0;
@@ -51,9 +54,9 @@ function assert(cond, name, detail) {
 function fail(msg) { console.error('FATAL: ' + msg); process.exit(2); }
 
 // ---- Load runtime starter through main.js test hooks ----
-// This intentionally exercises the same transform BootstrapModal uses. The
-// raw BRAIN_STARTER_VAULT constant is historical input now; the product
-// contract is getGovernedStarterVault().
+// getGovernedStarterVault() is the product contract. As of v0.8.0 it is a
+// flat table rather than a blob filtered by a removal set and patched by an
+// override map, so what this asserts is what ships.
 const _origLoad = Module._load;
 Module._load = function (request) {
   if (request === 'obsidian') {
@@ -159,10 +162,13 @@ assert(/Read `CLAUDE\.md` first/.test(agentsMd), 'AGENTS.md points to CLAUDE.md'
 assert(/context-routing\.md/.test(agentsMd), 'AGENTS.md points to context-routing');
 assert(!/Agent Handoff Log\.md/.test(agentsMd), 'AGENTS.md does not force old handoff-log preload');
 
-const evolveSkill = fs.readFileSync(path.join(tmpRoot, '.claude/skills/brain-evolve/SKILL.md'), 'utf8');
-assert(/status: historical/.test(evolveSkill), 'brain-evolve starter skill is historical');
-assert(/triggers: \[\]/.test(evolveSkill), 'brain-evolve starter skill has no triggers');
-assert(/quarantined/i.test(evolveSkill), 'brain-evolve starter skill has quarantine warning');
+// v0.8.0 — the retired autonomous skills are not scaffolded at all, not even
+// as quarantined stubs. A stub is still a file the next agent can read and
+// decide to revive; the brain's own wiki-workflows.md lists both as removed.
+assert(!fs.existsSync(path.join(tmpRoot, '.claude/skills/brain-evolve/SKILL.md')),
+  'brain-evolve skill is not scaffolded');
+assert(!fs.existsSync(path.join(tmpRoot, '.claude/skills/brain-ship/SKILL.md')),
+  'brain-ship skill is not scaffolded');
 
 assert(fs.existsSync(path.join(tmpRoot, 'wiki/_common/context-routing.md')),
   'context-routing.md scaffolded');
@@ -191,6 +197,47 @@ for (const [rel, content] of Object.entries(vaultObj)) {
   }
 }
 assert(personalLeaks === 0, `no personal-name leaks in scaffold content (${personalLeaks} found)`);
+
+// ---- v0.8.0: no scaffolded file may teach the retired system ----
+// v0.6.7 stopped scaffolding operating-mode.md and the proposal queue but kept
+// shipping a README, a QUICKSTART, and a concept page that told the user to
+// recreate them — including a step that cron-scheduled brain-evolve and
+// brain-ship. Removing the pages while shipping the instructions to rebuild
+// them is not governance, so the whole scaffold is scanned.
+console.log('\n--- Retired-system references ---');
+const CAGE_TERMS = [
+  'operating-mode', '_proposals', 'brain-evolve', 'brain-ship',
+  'Project Triage', 'Decision Log', 'Operating Cadence', 'Income Plan',
+  'priority band', 'schedule create',
+];
+let cageRefs = 0;
+for (const [rel, body] of Object.entries(vaultObj)) {
+  for (const term of CAGE_TERMS) {
+    if (body.includes(term)) {
+      failed++;
+      console.log(`  ✗ ${rel}: references retired "${term}"`);
+      cageRefs++;
+    }
+  }
+}
+assert(cageRefs === 0, `no scaffolded file references the retired operating system (${cageRefs} found)`);
+
+// ---- v0.8.0: the published example cannot drift from the shipped scaffold ----
+console.log('\n--- examples/starter-vault parity ---');
+{
+  const { execFileSync } = require('child_process');
+  let parityOk = true;
+  let detail = '';
+  try {
+    execFileSync(process.execPath,
+      [path.join(__dirname, '..', 'tools', 'sync-starter-examples.js'), '--check'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    parityOk = false;
+    detail = String((e && e.stderr) || e).trim().split('\n').slice(0, 3).join(' / ');
+  }
+  assert(parityOk, 'examples/starter-vault matches getGovernedStarterVault()', detail);
+}
 
 // ---- Cleanup ----
 console.log('\n--- Cleanup ---');

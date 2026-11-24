@@ -1,0 +1,2562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brain Operator — Workbench</title>
+<style>
+  :root {
+    --bg:        #12100e;
+    --bg-lift:   #191612;
+    --bg-card:   #1f1b16;
+    --bg-sink:   #0d0b0a;
+    --bg-hover:  #25201a;
+    --rule:      #2b2621;
+    --rule-soft: #201c18;
+    --ink:       #ece4d6;
+    --ink-dim:   #a89d90;
+    --ink-mute:  #6f665b;
+
+    --amber:     #e8a33d;
+    --amber-hot: #ffc46b;
+    --amber-dim: #6b4d1e;
+    --amber-bg:  rgba(232, 163, 61, 0.11);
+
+    --good:      #8fae62;
+    --good-bg:   rgba(143, 174, 98, 0.13);
+    --warn:      #d4813a;
+    --warn-bg:   rgba(212, 129, 58, 0.14);
+    --bad:       #c4544a;
+    --bad-bg:    rgba(196, 84, 74, 0.14);
+    --info:      #78a2c8;
+    --info-bg:   rgba(120, 162, 200, 0.13);
+
+    --serif: "Fraunces", "Hoefler Text", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --mono:  "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, monospace;
+    --sans:  -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 13.5px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+    background-image:
+      radial-gradient(90ch 50ch at 12% -10%, rgba(232, 163, 61, 0.065), transparent 60%),
+      radial-gradient(70ch 45ch at 92% 6%, rgba(232, 163, 61, 0.03), transparent 55%);
+  }
+
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0.22;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E");
+  }
+
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  code, pre, .mono { font-family: var(--mono); }
+
+  /* ---------- 3-pane workbench shell ---------- */
+  .app {
+    display: grid;
+    grid-template-columns: 278px minmax(0, 1fr) 390px;
+    height: 100vh;
+    width: 100vw;
+  }
+  .app.inspector-closed { grid-template-columns: 278px minmax(0, 1fr) 0px; }
+  .app.inspector-closed .inspector { display: none; }
+  @media (max-width: 1080px) {
+    .app { grid-template-columns: 240px minmax(0, 1fr) 0px; }
+    .app .inspector { display: none; }
+    .app.inspector-force-open .inspector {
+      display: flex; position: fixed; right: 0; top: 0; bottom: 0; width: min(410px, 92vw); z-index: 40;
+      box-shadow: -12px 0 36px rgba(0, 0, 0, 0.55);
+    }
+  }
+
+  /* ---------- Left rail ---------- */
+  .rail {
+    background: var(--bg-sink);
+    border-right: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .brand {
+    padding: 14px 14px 10px;
+    border-bottom: 1px solid var(--rule-soft);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .brand-title {
+    font-family: var(--serif);
+    font-size: 18px;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+  }
+  .brand-title em {
+    font-style: italic;
+    color: var(--amber);
+    text-shadow: 0 0 18px rgba(232, 163, 61, 0.28);
+  }
+  .ver-pill {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-mute);
+    letter-spacing: 0.06em;
+  }
+  .kbd-btn {
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-dim);
+    padding: 3px 7px;
+  }
+  .kbd-btn:hover { border-color: var(--amber-dim); color: var(--amber); }
+
+  .ws-block {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .ws-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .ws-select {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12.5px;
+    color: var(--ink);
+  }
+  .ws-select:focus { outline: none; border-color: var(--amber-dim); }
+  .icon-btn {
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 5px 9px;
+    font-size: 12px;
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+  .icon-btn:hover { border-color: var(--amber-dim); color: var(--amber-hot); background: var(--bg-hover); }
+  .ws-meta {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-mute);
+    gap: 6px;
+  }
+  .ws-branch { color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .providers-strip {
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--rule-soft);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+  }
+  .prov-pill {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--rule);
+    color: var(--ink-mute);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .prov-pill.ok { color: var(--ink-dim); border-color: #2f3825; background: rgba(143, 174, 98, 0.06); }
+  .prov-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-mute); }
+  .prov-pill.ok .prov-dot { background: var(--good); }
+
+  .nav-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .nav-tab {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 5px 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    color: var(--ink-dim);
+    text-align: center;
+  }
+  .nav-tab:hover { background: var(--bg-lift); color: var(--ink); }
+  .nav-tab.active {
+    background: var(--amber-bg);
+    border-color: var(--amber-dim);
+    color: var(--amber-hot);
+  }
+
+  .rail-actions {
+    padding: 10px 12px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .btn-primary {
+    background: var(--amber);
+    color: #16110b;
+    border: 1px solid var(--amber);
+    border-radius: 6px;
+    padding: 7px 12px;
+    font-weight: 600;
+    font-size: 12.5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn-primary:hover { background: var(--amber-hot); border-color: var(--amber-hot); }
+  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: var(--bg-lift);
+    color: var(--ink);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn-secondary:hover { border-color: var(--amber-dim); color: var(--amber-hot); background: var(--bg-hover); }
+  .btn-danger {
+    background: var(--bad-bg);
+    color: #ef8a80;
+    border: 1px solid rgba(196, 84, 74, 0.4);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .btn-danger:hover { background: rgba(196, 84, 74, 0.25); }
+
+  .search-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .search-input {
+    flex: 1;
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    color: var(--ink);
+  }
+  .search-input:focus { outline: none; border-color: var(--amber-dim); }
+  .search-input::placeholder { color: var(--ink-mute); }
+
+  .thread-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px 16px;
+  }
+  .thread-group-label {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    padding: 10px 6px 4px;
+  }
+  .thread-item {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    padding: 8px 9px;
+    margin-bottom: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .thread-item:hover { background: var(--bg-lift); }
+  .thread-item.active {
+    background: var(--bg-card);
+    border-color: var(--amber-dim);
+  }
+  .thread-item-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+    background: var(--ink-mute);
+  }
+  .status-dot.running {
+    background: var(--amber);
+    box-shadow: 0 0 8px var(--amber);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .status-dot.idle { background: var(--good); opacity: 0.7; }
+  .status-dot.error { background: var(--bad); }
+  @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.8); } }
+
+  .thread-item-title {
+    flex: 1;
+    font-size: 12.5px;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .thread-item-sub {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-mute);
+    padding-left: 13px;
+    flex-wrap: wrap;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--rule);
+    color: var(--ink-dim);
+    background: var(--bg-lift);
+    white-space: nowrap;
+  }
+  .chip.amber { border-color: var(--amber-dim); color: var(--amber-hot); background: var(--amber-bg); }
+  .chip.good { border-color: rgba(143, 174, 98, 0.35); color: var(--good); background: var(--good-bg); }
+  .chip.warn { border-color: rgba(212, 129, 58, 0.4); color: var(--warn); background: var(--warn-bg); }
+  .chip.bad { border-color: rgba(196, 84, 74, 0.4); color: #ef8a80; background: var(--bad-bg); }
+  .chip.info { border-color: rgba(120, 162, 200, 0.35); color: var(--info); background: var(--info-bg); }
+
+  /* ---------- Center main stage ---------- */
+  .main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: var(--bg);
+  }
+
+  .topbar {
+    min-height: 52px;
+    padding: 8px 18px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: rgba(18, 16, 14, 0.9);
+  }
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+  .thread-title-input {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    font-family: var(--serif);
+    font-size: 18px;
+    color: var(--ink);
+    padding: 2px 6px;
+    min-width: 120px;
+    max-width: 420px;
+    width: 100%;
+  }
+  .thread-title-input:hover { border-color: var(--rule); }
+  .thread-title-input:focus { outline: none; border-color: var(--amber-dim); background: var(--bg-lift); }
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .stage-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 22px 26px 28px;
+    min-height: 0;
+  }
+
+  /* ---------- Empty / Hero ---------- */
+  .hero {
+    max-width: 680px;
+    margin: 6vh auto 0;
+  }
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 8px;
+  }
+  .hero h1 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(2rem, 4vw, 3rem);
+    line-height: 1.04;
+    margin: 0 0 12px;
+  }
+  .hero h1 em { font-style: italic; color: var(--amber); }
+  .hero p { color: var(--ink-dim); margin: 0 0 22px; max-width: 56ch; }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px;
+  }
+  .hero-card {
+    text-align: left;
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 13px 14px;
+    transition: border-color 0.14s ease, background 0.14s ease;
+  }
+  .hero-card:hover { border-color: var(--amber-dim); background: var(--bg-card); }
+  .hero-card-title { font-family: var(--serif); font-size: 15px; color: var(--ink); margin-bottom: 4px; }
+  .hero-card-desc { font-size: 12px; color: var(--ink-dim); line-height: 1.45; }
+
+  /* ---------- Turns timeline ---------- */
+  .turns {
+    max-width: 820px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .turn {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .user-bubble {
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--amber);
+    border-radius: 8px;
+    padding: 11px 14px;
+  }
+  .turn-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-mute);
+    margin-bottom: 5px;
+    flex-wrap: wrap;
+  }
+  .user-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--ink);
+    font-size: 13.5px;
+  }
+
+  .tools-box {
+    background: var(--bg-sink);
+    border: 1px solid var(--rule-soft);
+    border-radius: 7px;
+    padding: 7px 11px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+  .tools-box summary {
+    cursor: pointer;
+    color: var(--ink-dim);
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tools-box summary::-webkit-details-marker { display: none; }
+  .tool-list {
+    margin-top: 8px;
+    padding-top: 7px;
+    border-top: 1px solid var(--rule-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .tool-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    color: var(--ink-dim);
+    font-size: 11px;
+  }
+  .tool-name { color: var(--amber); min-width: 44px; }
+  .tool-detail { color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .tool-st { font-size: 10px; color: var(--ink-mute); }
+
+  .assistant-card {
+    padding: 4px 2px;
+  }
+  .answer-body {
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.66;
+    word-break: break-word;
+  }
+  .answer-body h1, .answer-body h2, .answer-body h3 {
+    font-family: var(--serif);
+    font-weight: 400;
+    margin: 14px 0 6px;
+    color: var(--ink);
+  }
+  .answer-body h1 { font-size: 1.35em; }
+  .answer-body h2 { font-size: 1.18em; }
+  .answer-body h3 { font-size: 1.05em; }
+  .answer-body p { margin: 0 0 10px; }
+  .answer-body ul, .answer-body ol { margin: 0 0 10px; padding-left: 20px; }
+  .answer-body li { margin: 3px 0; }
+  .answer-body pre {
+    background: var(--bg-sink);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.5;
+    margin: 8px 0 12px;
+  }
+  .answer-body code {
+    background: var(--bg-lift);
+    border: 1px solid var(--rule-soft);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 12px;
+    color: var(--amber-hot);
+  }
+  .answer-body pre code { background: transparent; border: none; padding: 0; color: var(--ink); }
+  .wikilink {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--amber-hot);
+    background: var(--amber-bg);
+    border: 1px solid var(--amber-dim);
+    border-radius: 4px;
+    padding: 0 5px;
+  }
+
+  .trace-strip {
+    margin-top: 10px;
+    padding: 7px 11px;
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .trace-strip-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--ink-dim); }
+  .trace-strip-right { display: flex; align-items: center; gap: 6px; }
+  .link-btn {
+    background: transparent;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    padding: 3px 8px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-dim);
+  }
+  .link-btn:hover { border-color: var(--amber-dim); color: var(--amber-hot); }
+
+  .error-banner {
+    margin-top: 8px;
+    padding: 9px 12px;
+    background: var(--bad-bg);
+    border: 1px solid rgba(196, 84, 74, 0.45);
+    border-radius: 6px;
+    color: #f3a69e;
+    font-family: var(--mono);
+    font-size: 12px;
+    white-space: pre-wrap;
+  }
+
+  /* ---------- Composer ---------- */
+  .composer-wrap {
+    border-top: 1px solid var(--rule);
+    padding: 12px 22px 14px;
+    background: var(--bg-sink);
+  }
+  .composer {
+    max-width: 820px;
+    margin: 0 auto;
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-radius: 9px;
+    padding: 9px 11px;
+    transition: border-color 0.14s ease;
+  }
+  .composer:focus-within { border-color: var(--amber-dim); }
+  .composer textarea {
+    width: 100%;
+    min-height: 54px;
+    max-height: 200px;
+    resize: vertical;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+  .composer textarea::placeholder { color: var(--ink-mute); }
+  .composer-bar {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--rule-soft);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .composer-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .ctrl-select, .ctrl-input {
+    background: var(--bg-sink);
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-dim);
+  }
+  .ctrl-select:focus, .ctrl-input:focus { outline: none; border-color: var(--amber-dim); color: var(--ink); }
+  .ctrl-input { width: 135px; }
+  .handoff-hint {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--amber);
+    margin-top: 6px;
+  }
+
+  /* ---------- Right Inspector ---------- */
+  .inspector {
+    background: var(--bg-sink);
+    border-left: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+  }
+  .insp-tabs {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--rule);
+    padding: 0 10px;
+    min-height: 52px;
+    gap: 4px;
+  }
+  .insp-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 14px 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+  .insp-tab:hover { color: var(--ink-dim); }
+  .insp-tab.active { color: var(--amber-hot); border-bottom-color: var(--amber); }
+  .insp-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    min-height: 0;
+  }
+
+  .section-h {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin: 14px 0 6px;
+  }
+  .section-h:first-child { margin-top: 0; }
+
+  .kv-box {
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-radius: 7px;
+    padding: 9px 11px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .kv-row { display: flex; justify-content: space-between; gap: 10px; }
+  .kv-k { color: var(--ink-mute); }
+  .kv-v { color: var(--ink); text-align: right; word-break: break-all; }
+
+  .diff-file-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--rule-soft);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .diff-file-row:last-child { border-bottom: none; }
+  .diff-add { color: var(--good); }
+  .diff-del { color: var(--bad); }
+
+  .diff-pre {
+    background: #0a0908;
+    border: 1px solid var(--rule);
+    border-radius: 7px;
+    padding: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.48;
+    overflow-x: auto;
+    max-height: 44vh;
+    white-space: pre;
+  }
+  .dl-add { display: block; background: rgba(143, 174, 98, 0.14); color: #b7d687; }
+  .dl-del { display: block; background: rgba(196, 84, 74, 0.15); color: #f09a92; }
+  .dl-hunk { display: block; color: var(--amber); margin-top: 4px; }
+  .dl-head { display: block; color: var(--ink-dim); font-weight: 600; margin-top: 6px; }
+  .dl-ctx { display: block; color: var(--ink-mute); }
+
+  .wt-actions {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .wt-commit-row { display: flex; gap: 6px; }
+  .wt-commit-row input {
+    flex: 1;
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+
+  /* ---------- Fleet & Observatory views ---------- */
+  .view-wrap {
+    max-width: 1040px;
+    margin: 0 auto;
+  }
+  .view-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .view-head h1 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 28px;
+    margin: 0;
+  }
+  .view-head h1 em { font-style: italic; color: var(--amber); }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .stat-val {
+    font-family: var(--serif);
+    font-size: 28px;
+    color: var(--amber);
+    line-height: 1.05;
+  }
+  .stat-lbl {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin-top: 5px;
+  }
+
+  .fleet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .fleet-card {
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 13px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .fleet-card.running { border-color: var(--amber-dim); box-shadow: 0 0 24px rgba(232, 163, 61, 0.08); }
+  .fleet-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .fleet-card-title { font-family: var(--serif); font-size: 15.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fleet-card-foot { display: flex; gap: 6px; margin-top: auto; padding-top: 4px; flex-wrap: wrap; }
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+  .data-table th {
+    text-align: left;
+    font-weight: 400;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    padding: 0 10px 8px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .data-table td {
+    padding: 8px 10px 8px 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: middle;
+  }
+  .data-table tr:hover td { background: rgba(232, 163, 61, 0.03); }
+
+  .obs-instrument {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 24px;
+    margin-bottom: 26px;
+    align-items: center;
+  }
+  @media (max-width: 720px) { .obs-instrument { grid-template-columns: 1fr; } }
+  .obs-dial { text-align: center; background: var(--bg-lift); border: 1px solid var(--rule); border-radius: 8px; padding: 14px; }
+  .obs-dial-val { font-family: var(--serif); font-size: 40px; color: var(--amber); line-height: 1; }
+  .obs-trend { background: var(--bg-lift); border: 1px solid var(--rule); border-radius: 8px; padding: 14px; }
+  .obs-two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 24px; }
+  @media (max-width: 720px) { .obs-two { grid-template-columns: 1fr; } }
+
+  /* ---------- Modals & Command Palette ---------- */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 7, 6, 0.72);
+    backdrop-filter: blur(3px);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 12vh;
+    z-index: 200;
+  }
+  .modal-backdrop[hidden] { display: none; }
+  .modal-box {
+    width: min(500px, 92vw);
+    background: var(--bg-lift);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 18px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  }
+  .modal-box h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 20px;
+    margin: 0 0 14px;
+  }
+  .form-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  .form-field label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+  .form-field input, .form-field select {
+    background: var(--bg-sink);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  .form-field input:focus, .form-field select:focus { outline: none; border-color: var(--amber-dim); }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+  .palette-list {
+    margin-top: 10px;
+    max-height: 320px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .palette-row {
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  .palette-row:hover, .palette-row.sel { background: var(--bg-card); border-color: var(--amber-dim); }
+  .palette-hint { font-family: var(--mono); font-size: 10.5px; color: var(--ink-mute); }
+
+  .toast-wrap {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 300;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .toast {
+    background: var(--bg-card);
+    border: 1px solid var(--amber-dim);
+    color: var(--ink);
+    border-radius: 7px;
+    padding: 9px 13px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+    max-width: 360px;
+  }
+  .toast.error { border-color: rgba(196, 84, 74, 0.6); color: #f3a69e; }
+  .empty-muted { color: var(--ink-mute); font-size: 12.5px; font-family: var(--mono); padding: 8px 0; }
+</style>
+</head>
+<body>
+<div class="app" id="appRoot">
+  <!-- LEFT RAIL -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-title">
+        <span>Brain <em>Operator</em></span>
+        <span class="ver-pill" id="verPill">v0.9.0</span>
+      </div>
+      <button class="kbd-btn" id="openPaletteBtn" title="Command palette (Cmd+K)">⌘K</button>
+    </div>
+
+    <div class="ws-block">
+      <div class="ws-row">
+        <select class="ws-select" id="wsSelect" aria-label="Workspace"></select>
+        <button class="icon-btn" id="addWsBtn" title="Add local repo or Obsidian vault">+ Repo</button>
+      </div>
+      <div class="ws-meta">
+        <span class="ws-branch" id="wsBranch">—</span>
+        <span id="wsDirty"></span>
+      </div>
+    </div>
+
+    <div class="providers-strip" id="providersStrip" title="Detected local agent CLIs"></div>
+
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-view="threads">Threads <span id="runningBadge"></span></button>
+      <button class="nav-tab" data-view="fleet">Fleet</button>
+      <button class="nav-tab" data-view="observatory">Observatory</button>
+    </div>
+
+    <div class="rail-actions">
+      <button class="btn-primary" id="newThreadBtn">+ New Thread</button>
+      <div class="search-row">
+        <input class="search-input" id="threadSearch" type="text" placeholder="Filter threads…">
+        <button class="icon-btn" id="toggleArchiveBtn" title="Show archived threads">Arc</button>
+      </div>
+    </div>
+
+    <div class="thread-list" id="threadList"></div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <div class="stage-scroll" id="stageScroll"></div>
+    <div class="composer-wrap" id="composerWrap" hidden>
+      <div class="composer">
+        <textarea id="composerInput" placeholder="Ask, inspect, or delegate work… (Cmd+Enter to send · Esc to cancel run)"></textarea>
+        <div class="handoff-hint" id="handoffHint" hidden></div>
+        <div class="composer-bar">
+          <div class="composer-controls">
+            <select class="ctrl-select" id="compProvider" aria-label="Provider">
+              <option value="claude">Claude Code</option>
+              <option value="codex">Codex CLI</option>
+              <option value="gemini">Gemini CLI</option>
+              <option value="sim">Local Sim</option>
+            </select>
+            <select class="ctrl-select" id="compMode" aria-label="Workspace mode">
+              <option value="read-only">Read-only</option>
+              <option value="worktree">Worktree (isolated)</option>
+              <option value="direct">Direct edit</option>
+            </select>
+            <input class="ctrl-input" id="compModel" list="modelSuggestions" placeholder="default model">
+            <datalist id="modelSuggestions"></datalist>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button class="btn-danger" id="stopBtn" hidden>Stop</button>
+            <button class="btn-primary" id="sendBtn">Send ⌘↵</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT INSPECTOR -->
+  <aside class="inspector" id="inspectorPane">
+    <div class="insp-tabs">
+      <button class="insp-tab active" data-itab="diff">Diff</button>
+      <button class="insp-tab" data-itab="trace">Trace</button>
+      <button class="insp-tab" data-itab="context">Context</button>
+      <div style="flex:1"></div>
+      <button class="icon-btn" id="refreshInspBtn" title="Refresh inspector">↻</button>
+    </div>
+    <div class="insp-body" id="inspBody"></div>
+  </aside>
+</div>
+
+<!-- NEW THREAD MODAL -->
+<div class="modal-backdrop" id="newThreadModal" hidden>
+  <div class="modal-box">
+    <h2>New Agent Thread</h2>
+    <div class="form-field">
+      <label for="ntTitle">Title (optional — auto-titled on first prompt)</label>
+      <input id="ntTitle" type="text" placeholder="e.g. Refactor auth middleware">
+    </div>
+    <div class="form-field">
+      <label for="ntProvider">Provider</label>
+      <select id="ntProvider">
+        <option value="claude">Claude Code</option>
+        <option value="codex">Codex CLI</option>
+        <option value="gemini">Gemini CLI</option>
+        <option value="sim">Local Simulator (dry-run)</option>
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="ntMode">Isolation & Permissions</label>
+      <select id="ntMode">
+        <option value="read-only">Read-only (Ask / Inspect — zero file writes)</option>
+        <option value="worktree">Isolated Git Worktree (parallel branch bo/...)</option>
+        <option value="direct">Direct Workspace Edit</option>
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="ntModel">Model Override (optional)</label>
+      <input id="ntModel" type="text" placeholder="Leave blank for provider default">
+    </div>
+    <div class="modal-foot">
+      <button class="btn-secondary" data-close-modal="newThreadModal">Cancel</button>
+      <button class="btn-primary" id="ntCreateBtn">Create Thread</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD WORKSPACE MODAL -->
+<div class="modal-backdrop" id="addWsModal" hidden>
+  <div class="modal-box">
+    <h2>Add Repository or Vault</h2>
+    <div class="form-field">
+      <label for="awPath">Absolute Local Path</label>
+      <input id="awPath" type="text" placeholder="/Users/you/Documents/GitHub/my-project">
+    </div>
+    <div class="form-field">
+      <label for="awName">Display Name (optional)</label>
+      <input id="awName" type="text" placeholder="Defaults to folder name">
+    </div>
+    <div class="modal-foot">
+      <button class="btn-secondary" data-close-modal="addWsModal">Cancel</button>
+      <button class="btn-primary" id="awAddBtn">Add Workspace</button>
+    </div>
+  </div>
+</div>
+
+<!-- COMMAND PALETTE -->
+<div class="modal-backdrop" id="paletteModal" hidden>
+  <div class="modal-box">
+    <input class="search-input" id="paletteInput" style="width:100%;padding:9px 11px;font-size:13.5px;" placeholder="Jump to thread, switch view, or run action…">
+    <div class="palette-list" id="paletteList"></div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const state = {
+    version: "0.9.0",
+    providers: {},
+    workspaces: [],
+    activeWorkspaceId: null,
+    threads: [],
+    selectedThreadId: null,
+    selectedThreadTurns: [],
+    selectedTurnId: null,
+    view: "threads", // threads | fleet | observatory
+    inspectorOpen: true,
+    inspectorTab: "diff", // diff | trace | context
+    showArchived: false,
+    searchQuery: "",
+    diffCache: null,
+    contextCache: null,
+    observatoryCache: null,
+    liveStreams: new Map(), // threadId -> { runId, answerBuffer, toolCalls, statusText, startedAt, provider, model, prompt }
+    sseConnected: false,
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  function esc(str) {
+    return String(str == null ? "" : str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function toast(msg, isError) {
+    const el = document.createElement("div");
+    el.className = "toast" + (isError ? " error" : "");
+    el.textContent = msg;
+    $("toastWrap").appendChild(el);
+    setTimeout(() => el.remove(), isError ? 5200 : 3200);
+  }
+
+  async function api(path, opts) {
+    const res = await fetch(path, Object.assign({
+      headers: { "Content-Type": "application/json" },
+    }, opts));
+    const ct = res.headers.get("content-type") || "";
+    const data = ct.includes("application/json") ? await res.json() : await res.text();
+    if (!res.ok) {
+      throw new Error((data && data.error) || `HTTP ${res.status}`);
+    }
+    return data;
+  }
+
+  function formatRelTime(iso) {
+    if (!iso) return "";
+    const diff = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 1000));
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  }
+
+  function renderMarkdown(raw) {
+    const src = String(raw || "");
+    if (!src.trim()) return "";
+    const blocks = [];
+    let text = src.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+      const idx = blocks.length;
+      blocks.push(`<pre><code>${esc(code.replace(/\n$/, ""))}</code></pre>`);
+      return `\u0000BLOCK${idx}\u0000`;
+    });
+
+    const lines = text.split("\n");
+    const out = [];
+    let inList = false;
+
+    const inline = (s) => {
+      let r = esc(s);
+      r = r.replace(/`([^`]+)`/g, "<code>$1</code>");
+      r = r.replace(/\[\[([^\]]+)\]\]/g, '<span class="wikilink">[[$1]]</span>');
+      r = r.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      r = r.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+      return r;
+    };
+
+    for (const line of lines) {
+      const blkMatch = line.match(/^\u0000BLOCK(\d+)\u0000$/);
+      if (blkMatch) {
+        if (inList) { out.push("</ul>"); inList = false; }
+        out.push(blocks[Number(blkMatch[1])]);
+        continue;
+      }
+      if (/^###\s+/.test(line)) {
+        if (inList) { out.push("</ul>"); inList = false; }
+        out.push(`<h3>${inline(line.replace(/^###\s+/, ""))}</h3>`);
+      } else if (/^##\s+/.test(line)) {
+        if (inList) { out.push("</ul>"); inList = false; }
+        out.push(`<h2>${inline(line.replace(/^##\s+/, ""))}</h2>`);
+      } else if (/^#\s+/.test(line)) {
+        if (inList) { out.push("</ul>"); inList = false; }
+        out.push(`<h1>${inline(line.replace(/^#\s+/, ""))}</h1>`);
+      } else if (/^\s*[-*]\s+/.test(line)) {
+        if (!inList) { out.push("<ul>"); inList = true; }
+        out.push(`<li>${inline(line.replace(/^\s*[-*]\s+/, ""))}</li>`);
+      } else if (!line.trim()) {
+        if (inList) { out.push("</ul>"); inList = false; }
+      } else {
+        if (inList) { out.push("</ul>"); inList = false; }
+        out.push(`<p>${inline(line)}</p>`);
+      }
+    }
+    if (inList) out.push("</ul>");
+    return out.join("\n").replace(/\u0000BLOCK(\d+)\u0000/g, (_, idx) => blocks[Number(idx)] || "");
+  }
+
+  function scoreBandClass(score) {
+    if (score == null) return "";
+    if (score >= 90) return "good";
+    if (score >= 60) return "amber";
+    if (score >= 30) return "warn";
+    return "bad";
+  }
+
+  function activeWorkspace() {
+    return state.workspaces.find((w) => w.id === state.activeWorkspaceId) || state.workspaces[0] || null;
+  }
+
+  function selectedThread() {
+    return state.threads.find((t) => t.id === state.selectedThreadId) || null;
+  }
+
+  function visibleThreads() {
+    const ws = activeWorkspace();
+    const q = state.searchQuery.trim().toLowerCase();
+    return state.threads.filter((t) => {
+      if (ws && t.workspaceId !== ws.id) return false;
+      if (!state.showArchived && t.archived) return false;
+      if (q) {
+        const hay = `${t.title} ${t.provider} ${t.worktree ? t.worktree.branch : ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
+
+  // ---------- Rendering: Left Rail ----------
+
+  function renderWorkspaces() {
+    const sel = $("wsSelect");
+    sel.innerHTML = state.workspaces.length
+      ? state.workspaces.map((w) => `<option value="${esc(w.id)}"${w.id === state.activeWorkspaceId ? " selected" : ""}>${esc(w.name)}</option>`).join("")
+      : `<option value="">No workspace added</option>`;
+    const ws = activeWorkspace();
+    if (ws) {
+      $("wsBranch").textContent = ws.isGitRepo ? `${ws.branch || "HEAD"} @ ${ws.headSha || "—"}` : "folder (no git)";
+      $("wsDirty").textContent = ws.isGitRepo && ws.dirtyCount > 0 ? `${ws.dirtyCount} dirty` : "";
+    } else {
+      $("wsBranch").textContent = "Add a repo or vault";
+      $("wsDirty").textContent = "";
+    }
+  }
+
+  function renderProviders() {
+    const strip = $("providersStrip");
+    const ids = ["claude", "codex", "gemini", "sim"];
+    strip.innerHTML = ids.map((id) => {
+      const p = state.providers[id];
+      const ok = p && p.available;
+      const tip = p ? `${p.label}: ${p.version || (ok ? "ready" : "not found")}` : id;
+      return `<span class="prov-pill ${ok ? "ok" : ""}" title="${esc(tip)}"><i class="prov-dot"></i>${esc(id)}</span>`;
+    }).join("");
+
+    // Populate composer model datalist based on selected provider
+    const curProv = $("compProvider").value;
+    const p = state.providers[curProv];
+    const models = (p && Array.isArray(p.defaultModels)) ? p.defaultModels : [];
+    $("modelSuggestions").innerHTML = models.map((m) => `<option value="${esc(m)}"></option>`).join("");
+  }
+
+  function renderThreadList() {
+    const list = visibleThreads();
+    const runningAll = state.threads.filter((t) => t.status === "running" || state.liveStreams.has(t.id)).length;
+    $("runningBadge").textContent = runningAll > 0 ? `(${runningAll})` : "";
+
+    const container = $("threadList");
+    if (!list.length) {
+      container.innerHTML = `<div class="empty-muted" style="padding:14px 8px;">No threads yet. Click "+ New Thread" to start.</div>`;
+      return;
+    }
+
+    const groups = [
+      { label: "Running", items: list.filter((t) => t.status === "running" || state.liveStreams.has(t.id)) },
+      { label: "Pinned", items: list.filter((t) => t.pinned && t.status !== "running" && !state.liveStreams.has(t.id) && !t.archived) },
+      { label: "Recent", items: list.filter((t) => !t.pinned && t.status !== "running" && !state.liveStreams.has(t.id) && !t.archived) },
+      { label: "Archived", items: list.filter((t) => t.archived) },
+    ];
+
+    container.innerHTML = groups.filter((g) => g.items.length).map((g) => {
+      const rows = g.items.map((t) => {
+        const isRunning = t.status === "running" || state.liveStreams.has(t.id);
+        const dotCls = isRunning ? "running" : t.status === "error" ? "error" : "idle";
+        const activeCls = t.id === state.selectedThreadId && state.view === "threads" ? " active" : "";
+        const score = t.lastFaithfulness && t.lastFaithfulness.score != null ? t.lastFaithfulness.score : null;
+        return `
+          <button class="thread-item${activeCls}" data-thread-id="${esc(t.id)}">
+            <div class="thread-item-top">
+              <span class="status-dot ${dotCls}"></span>
+              <span class="thread-item-title">${esc(t.title)}</span>
+              ${score != null ? `<span class="chip ${scoreBandClass(score)}">${score}</span>` : ""}
+            </div>
+            <div class="thread-item-sub">
+              <span>${esc(t.provider)}</span>
+              ${t.worktree ? `<span class="chip amber" style="padding:0 4px;">${esc(t.worktree.branch.replace(/^bo\//, ""))}</span>` : ""}
+              <span>${t.turnCount || 0}t</span>
+              <span>${esc(formatRelTime(t.updatedAt))}</span>
+            </div>
+          </button>`;
+      }).join("");
+      return `<div class="thread-group-label">${esc(g.label)}</div>${rows}`;
+    }).join("");
+
+    container.querySelectorAll(".thread-item").forEach((btn) => {
+      btn.addEventListener("click", () => selectThread(btn.dataset.threadId));
+    });
+  }
+
+  // ---------- Rendering: Topbar & Center Stage ----------
+
+  function renderTopbar() {
+    const bar = $("topbar");
+    if (state.view === "fleet") {
+      bar.innerHTML = `
+        <div class="topbar-left">
+          <span class="chip amber">ORCA MODE</span>
+          <span style="font-family:var(--serif);font-size:18px;">Agent Fleet &amp; Worktrees</span>
+        </div>
+        <div class="topbar-right">
+          <button class="btn-secondary" id="fleetRefreshBtn">↻ Refresh</button>
+          <button class="btn-primary" id="fleetNewWtBtn">+ Parallel Worktree Thread</button>
+        </div>`;
+      $("fleetRefreshBtn").onclick = () => { loadContext(); renderAll(); };
+      $("fleetNewWtBtn").onclick = () => openNewThreadModal("worktree");
+      return;
+    }
+
+    if (state.view === "observatory") {
+      bar.innerHTML = `
+        <div class="topbar-left">
+          <span class="chip amber">OBSERVATORY</span>
+          <span style="font-family:var(--serif);font-size:18px;">Retrieval Faithfulness &amp; Drift</span>
+        </div>
+        <div class="topbar-right">
+          <button class="btn-secondary" id="obsRefreshBtn">↻ Refresh</button>
+        </div>`;
+      $("obsRefreshBtn").onclick = () => loadObservatory();
+      return;
+    }
+
+    const t = selectedThread();
+    if (!t) {
+      bar.innerHTML = `
+        <div class="topbar-left">
+          <span style="font-family:var(--serif);font-size:17px;color:var(--ink-dim);">Brain Operator Workbench</span>
+          <span class="chip ${state.sseConnected ? "good" : "warn"}">${state.sseConnected ? "live" : "connecting…"}</span>
+        </div>
+        <div class="topbar-right">
+          <button class="btn-secondary" id="toggleInspBtn">${state.inspectorOpen ? "Hide Inspector" : "Inspector"}</button>
+        </div>`;
+      $("toggleInspBtn").onclick = toggleInspector;
+      return;
+    }
+
+    const wtBadge = t.worktree
+      ? `<span class="chip amber" title="${esc(t.worktree.path)}">⎇ ${esc(t.worktree.branch)}</span>`
+      : `<button class="link-btn" id="attachWtBtn" title="Create isolated git worktree for this thread">+ Worktree</button>`;
+
+    bar.innerHTML = `
+      <div class="topbar-left">
+        <input class="thread-title-input" id="threadTitleEdit" value="${esc(t.title)}" aria-label="Thread title">
+        ${wtBadge}
+        <span class="chip">${esc(t.mode)}</span>
+      </div>
+      <div class="topbar-right">
+        <button class="btn-secondary" id="forkBtn" title="Fork thread into new branch/conversation">Fork</button>
+        <button class="btn-secondary" id="pinBtn">${t.pinned ? "Unpin" : "Pin"}</button>
+        <button class="btn-secondary" id="archiveBtn">${t.archived ? "Unarchive" : "Archive"}</button>
+        <button class="btn-secondary" id="toggleInspBtn">${state.inspectorOpen ? "Hide Inspector" : "Inspector"}</button>
+      </div>`;
+
+    const titleEl = $("threadTitleEdit");
+    titleEl.addEventListener("change", async () => {
+      const next = titleEl.value.trim();
+      if (!next || next === t.title) return;
+      try {
+        await api(`/api/threads/${encodeURIComponent(t.id)}`, { method: "PATCH", body: JSON.stringify({ title: next }) });
+        toast("Renamed thread");
+      } catch (err) { toast(err.message, true); }
+    });
+    const attachBtn = $("attachWtBtn");
+    if (attachBtn) {
+      attachBtn.onclick = async () => {
+        try {
+          attachBtn.disabled = true;
+          await api(`/api/threads/${encodeURIComponent(t.id)}/worktree`, { method: "POST", body: JSON.stringify({}) });
+          toast("Attached isolated git worktree");
+          await loadThreadDetail(t.id);
+          await loadDiff();
+        } catch (err) { toast(err.message, true); attachBtn.disabled = false; }
+      };
+    }
+    $("forkBtn").onclick = async () => {
+      try {
+        const useWorktree = Boolean(t.worktree);
+        const res = await api(`/api/threads/${encodeURIComponent(t.id)}/fork`, {
+          method: "POST",
+          body: JSON.stringify({ useWorktree }),
+        });
+        toast("Forked thread");
+        upsertThreadLocal(res.thread);
+        await selectThread(res.thread.id);
+      } catch (err) { toast(err.message, true); }
+    };
+    $("pinBtn").onclick = async () => {
+      await api(`/api/threads/${encodeURIComponent(t.id)}`, { method: "PATCH", body: JSON.stringify({ pinned: !t.pinned }) });
+    };
+    $("archiveBtn").onclick = async () => {
+      await api(`/api/threads/${encodeURIComponent(t.id)}`, { method: "PATCH", body: JSON.stringify({ archived: !t.archived }) });
+    };
+    $("toggleInspBtn").onclick = toggleInspector;
+  }
+
+  function renderToolsHtml(tools, isLive) {
+    if (!tools || !tools.length) return "";
+    const counts = {};
+    for (const tc of tools) counts[tc.name] = (counts[tc.name] || 0) + 1;
+    const summary = Object.entries(counts).map(([k, v]) => `${k} ×${v}`).join(" · ");
+    const rows = tools.map((tc) => `
+      <div class="tool-row">
+        <span class="tool-name">${esc(tc.name)}</span>
+        <span class="tool-detail" title="${esc(tc.detail || "")}">${esc(tc.detail || tc.query || "")}</span>
+        <span class="tool-st">${esc(tc.status || "")}</span>
+      </div>`).join("");
+    return `
+      <details class="tools-box"${isLive ? " open" : ""}>
+        <summary><span>${tools.length} tool call${tools.length === 1 ? "" : "s"}</span><span style="color:var(--ink-mute)">${esc(summary)}</span></summary>
+        <div class="tool-list">${rows}</div>
+      </details>`;
+  }
+
+  function renderStage() {
+    const scroll = $("stageScroll");
+    const composerWrap = $("composerWrap");
+
+    if (state.view === "fleet") {
+      composerWrap.hidden = true;
+      renderFleetView(scroll);
+      return;
+    }
+    if (state.view === "observatory") {
+      composerWrap.hidden = true;
+      renderObservatoryView(scroll);
+      return;
+    }
+
+    const t = selectedThread();
+    if (!t) {
+      composerWrap.hidden = true;
+      const ws = activeWorkspace();
+      scroll.innerHTML = `
+        <div class="hero">
+          <div class="hero-eyebrow">BRAIN OPERATOR · WORKBENCH</div>
+          <h1>Point the <em>fleet</em>.</h1>
+          <p>Run Claude Code, Codex, and Gemini CLI side by side in parallel threads and isolated git worktrees — with scoped retrieval, Answer Trace, Retrieval Faithfulness scoring, and safe diff merge built in.</p>
+          <div class="hero-grid">
+            <button class="hero-card" id="heroAskBtn">
+              <div class="hero-card-title">Read-only Ask</div>
+              <div class="hero-card-desc">Scoped vault or repo inspection. Zero file writes, full Answer Trace and Faithfulness score.</div>
+            </button>
+            <button class="hero-card" id="heroWtBtn">
+              <div class="hero-card-title">Isolated Worktree</div>
+              <div class="hero-card-desc">Spin up a dedicated <code>bo/*</code> git branch so agents edit in parallel without file collisions.</div>
+            </button>
+            <button class="hero-card" id="heroObsBtn">
+              <div class="hero-card-title">Open Observatory</div>
+              <div class="hero-card-desc">Chart faithfulness over time, compare Claude vs Codex vs Gemini, and catch phantom citations.</div>
+            </button>
+          </div>
+          ${ws ? `<div class="empty-muted" style="margin-top:18px;">Active workspace: ${esc(ws.path)}</div>` : ""}
+        </div>`;
+      $("heroAskBtn").onclick = () => quickCreateThread("read-only");
+      $("heroWtBtn").onclick = () => quickCreateThread("worktree");
+      $("heroObsBtn").onclick = () => setView("observatory");
+      return;
+    }
+
+    composerWrap.hidden = false;
+    syncComposerControls(t);
+
+    const turns = state.selectedThreadTurns || [];
+    const live = state.liveStreams.get(t.id) || t.activeRun || null;
+
+    if (!turns.length && !live) {
+      scroll.innerHTML = `
+        <div class="hero" style="margin-top:8vh;">
+          <div class="hero-eyebrow">${esc(t.provider.toUpperCase())} · ${esc(t.mode.toUpperCase())}${t.worktree ? ` · ${esc(t.worktree.branch)}` : ""}</div>
+          <h1>Ready to <em>run</em>.</h1>
+          <p>Send a prompt below. Switch providers mid-thread at any time — Brain Operator automatically passes a fenced structured handoff when changing models.</p>
+        </div>`;
+      return;
+    }
+
+    const parts = turns.map((turn) => {
+      const f = turn.trace && turn.trace.faithfulness;
+      const fLabel = f && f.score != null ? `faithfulness ${f.score}/100 (${f.label})` : "no citations";
+      const fCls = f && f.score != null ? scoreBandClass(f.score) : "";
+      const sec = turn.durationMs != null ? `${(turn.durationMs / 1000).toFixed(1)}s` : "";
+      const cost = turn.costUsd ? `$${Number(turn.costUsd).toFixed(4)}` : "";
+      return `
+        <div class="turn" data-turn-id="${esc(turn.id)}">
+          <div class="user-bubble">
+            <div class="turn-meta">
+              <span class="chip">${esc(turn.provider)}</span>
+              ${turn.model ? `<span>${esc(turn.model)}</span>` : ""}
+              <span>${esc(turn.mode)}</span>
+              <span>${esc(formatRelTime(turn.createdAt))}</span>
+            </div>
+            <div class="user-text">${esc(turn.prompt)}</div>
+          </div>
+          ${renderToolsHtml(turn.toolCalls, false)}
+          <div class="assistant-card">
+            <div class="answer-body">${renderMarkdown(turn.answer || (turn.cancelled ? "_Cancelled._" : ""))}</div>
+            ${turn.error ? `<div class="error-banner">${esc(turn.error)}</div>` : ""}
+            <div class="trace-strip">
+              <div class="trace-strip-left">
+                <span class="chip ${fCls}">${esc(fLabel)}</span>
+                <span>read ${(turn.trace && turn.trace.read ? turn.trace.read.length : 0)}</span>
+                <span>cited ${(turn.trace && turn.trace.cited ? turn.trace.cited.length : 0)}</span>
+                <span>missing ${(turn.trace && turn.trace.missing ? turn.trace.missing.length : 0)}</span>
+                ${sec ? `<span>${esc(sec)}</span>` : ""}
+                ${cost ? `<span>${esc(cost)}</span>` : ""}
+              </div>
+              <div class="trace-strip-right">
+                <button class="link-btn inspect-turn-btn" data-turn-id="${esc(turn.id)}">Inspect Trace</button>
+                <button class="link-btn copy-receipt-btn" data-turn-id="${esc(turn.id)}">Copy Receipt</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    });
+
+    if (live) {
+      parts.push(`
+        <div class="turn" id="liveTurnEl">
+          <div class="user-bubble">
+            <div class="turn-meta">
+              <span class="chip amber">RUNNING</span>
+              <span class="chip">${esc(live.provider)}</span>
+              <span>${esc(live.statusText || "working…")}</span>
+            </div>
+            <div class="user-text">${esc(live.prompt || "")}</div>
+          </div>
+          ${renderToolsHtml(live.toolCalls || [], true)}
+          <div class="assistant-card">
+            <div class="answer-body" id="liveAnswerBody">${renderMarkdown(live.answerBuffer || "_Thinking…_")}</div>
+          </div>
+        </div>`);
+    }
+
+    scroll.innerHTML = `<div class="turns">${parts.join("")}</div>`;
+    scroll.scrollTop = scroll.scrollHeight;
+
+    scroll.querySelectorAll(".inspect-turn-btn").forEach((b) => {
+      b.onclick = () => {
+        state.selectedTurnId = b.dataset.turnId;
+        state.inspectorOpen = true;
+        state.inspectorTab = "trace";
+        updateLayoutClasses();
+        renderInspector();
+      };
+    });
+    scroll.querySelectorAll(".copy-receipt-btn").forEach((b) => {
+      b.onclick = async () => {
+        try {
+          const text = await api(`/api/threads/${encodeURIComponent(t.id)}/turns/${encodeURIComponent(b.dataset.turnId)}/receipt?format=markdown`);
+          await navigator.clipboard.writeText(text);
+          toast("Copied Agent Receipt (Markdown)");
+        } catch (err) { toast(err.message, true); }
+      };
+    });
+  }
+
+  function renderFleetView(container) {
+    const ws = activeWorkspace();
+    const threads = visibleThreads();
+    const running = threads.filter((t) => t.status === "running" || state.liveStreams.has(t.id));
+    const wts = (state.contextCache && state.contextCache.worktrees) || [];
+    const managedWts = wts.filter((w) => w.isManaged);
+    const totalDirty = wts.reduce((s, w) => s + (w.dirtyCount || 0), 0);
+
+    const cards = threads.map((t) => {
+      const isRunning = t.status === "running" || state.liveStreams.has(t.id);
+      const live = state.liveStreams.get(t.id);
+      const score = t.lastFaithfulness && t.lastFaithfulness.score != null ? `${t.lastFaithfulness.score}/100` : "—";
+      return `
+        <div class="fleet-card${isRunning ? " running" : ""}">
+          <div class="fleet-card-head">
+            <span class="fleet-card-title" title="${esc(t.title)}">${esc(t.title)}</span>
+            <span class="chip ${isRunning ? "amber" : "good"}">${isRunning ? "running" : esc(t.status)}</span>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <span class="chip">${esc(t.provider)}</span>
+            <span class="chip">${esc(t.mode)}</span>
+            ${t.worktree ? `<span class="chip amber">⎇ ${esc(t.worktree.branch)}</span>` : ""}
+            <span class="chip">faith ${esc(score)}</span>
+          </div>
+          <div class="empty-muted" style="padding:2px 0;font-size:11px;">
+            ${isRunning && live ? esc(live.statusText || "running…") : `${t.turnCount || 0} turn(s) · updated ${esc(formatRelTime(t.updatedAt))}`}
+          </div>
+          <div class="fleet-card-foot">
+            <button class="btn-secondary fleet-open-btn" data-id="${esc(t.id)}">Open</button>
+            <button class="btn-secondary fleet-diff-btn" data-id="${esc(t.id)}">Diff</button>
+            ${isRunning ? `<button class="btn-danger fleet-stop-btn" data-id="${esc(t.id)}">Stop</button>` : ""}
+          </div>
+        </div>`;
+    }).join("");
+
+    const wtRows = wts.map((w) => `
+      <tr>
+        <td><span class="chip ${w.isMain ? "info" : w.isManaged ? "amber" : ""}">${w.isMain ? "main" : w.isManaged ? "managed" : "external"}</span></td>
+        <td>${esc(w.branch)}</td>
+        <td>${esc(w.head || "—")}</td>
+        <td>${w.dirtyCount > 0 ? `<span style="color:var(--warn)">${w.dirtyCount} dirty</span>` : `<span style="color:var(--good)">clean</span>`}</td>
+        <td>+${w.ahead || 0}</td>
+        <td style="color:var(--ink-mute);font-size:10.5px;">${esc(w.relPath)}</td>
+      </tr>`).join("");
+
+    container.innerHTML = `
+      <div class="view-wrap">
+        <div class="view-head">
+          <h1>Agent <em>Fleet</em></h1>
+          <span class="mono" style="font-size:11.5px;color:var(--ink-mute);">${ws ? esc(ws.path) : ""}</span>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-val">${running.length}</div><div class="stat-lbl">Running Now</div></div>
+          <div class="stat-card"><div class="stat-val">${threads.length}</div><div class="stat-lbl">Active Threads</div></div>
+          <div class="stat-card"><div class="stat-val">${managedWts.length}</div><div class="stat-lbl">Isolated Worktrees</div></div>
+          <div class="stat-card"><div class="stat-val">${totalDirty}</div><div class="stat-lbl">Dirty Files Across Fleet</div></div>
+        </div>
+        <div class="section-h">Threads</div>
+        <div class="fleet-grid">${cards || `<div class="empty-muted">No threads in this workspace yet.</div>`}</div>
+        <div class="section-h">Git Worktrees</div>
+        ${wts.length ? `
+          <table class="data-table">
+            <thead><tr><th>Kind</th><th>Branch</th><th>HEAD</th><th>Status</th><th>Ahead</th><th>Path</th></tr></thead>
+            <tbody>${wtRows}</tbody>
+          </table>` : `<div class="empty-muted">Workspace is not a git repository or has no worktrees.</div>`}
+      </div>`;
+
+    container.querySelectorAll(".fleet-open-btn").forEach((b) => {
+      b.onclick = () => selectThread(b.dataset.id);
+    });
+    container.querySelectorAll(".fleet-diff-btn").forEach((b) => {
+      b.onclick = async () => {
+        await selectThread(b.dataset.id);
+        state.inspectorOpen = true;
+        state.inspectorTab = "diff";
+        updateLayoutClasses();
+        await loadDiff();
+      };
+    });
+    container.querySelectorAll(".fleet-stop-btn").forEach((b) => {
+      b.onclick = async () => {
+        await api(`/api/threads/${encodeURIComponent(b.dataset.id)}/cancel`, { method: "POST" });
+        toast("Cancelled run");
+      };
+    });
+  }
+
+  function renderObservatoryView(container) {
+    const obs = state.observatoryCache;
+    if (!obs || !obs.metrics) {
+      container.innerHTML = `<div class="view-wrap"><div class="empty-muted">Loading Observatory…</div></div>`;
+      return;
+    }
+    const m = obs.metrics;
+    const mean = m.meanFaithfulness;
+    const pct = mean != null ? Math.max(0, Math.min(100, mean)) / 100 : 0;
+    const arcLen = 282.7;
+    const dashOffset = arcLen * (1 - pct);
+
+    const pts = (m.trend || []).filter((p) => p.score != null);
+    let trendSvg = `<div class="empty-muted">Run a cited query to chart faithfulness trend.</div>`;
+    if (pts.length >= 1) {
+      const W = 520, H = 120, pad = 16;
+      const coords = pts.map((p, i) => {
+        const x = pts.length === 1 ? W / 2 : pad + (i / (pts.length - 1)) * (W - pad * 2);
+        const y = H - pad - (Number(p.score) / 100) * (H - pad * 2);
+        return { x, y, score: p.score, agent: p.agent };
+      });
+      const poly = coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(" ");
+      const dots = coords.map((c) => `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="3.5" fill="var(--amber-hot)"><title>${esc(c.agent)}: ${c.score}/100</title></circle>`).join("");
+      trendSvg = `
+        <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;">
+          <line x1="${pad}" y1="${pad}" x2="${W - pad}" y2="${pad}" stroke="var(--rule)" stroke-dasharray="3 4"/>
+          <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="var(--rule)"/>
+          ${coords.length > 1 ? `<polyline fill="none" stroke="var(--amber)" stroke-width="2" points="${poly}"/>` : ""}
+          ${dots}
+        </svg>`;
+    }
+
+    const lbRows = (m.leaderboard || []).map((r) => `
+      <tr>
+        <td><span class="chip amber">${esc(r.agent)}</span></td>
+        <td>${r.runs}</td>
+        <td>${r.meanFaithfulness != null ? `${r.meanFaithfulness}/100` : "—"}</td>
+        <td>${r.avgRead}</td>
+        <td>${r.phantomTotal}</td>
+      </tr>`).join("");
+
+    const unreadRows = (m.drift.citedButUnread || []).map((x) => `<tr><td>${esc(x.target)}</td><td style="text-align:right;color:var(--warn)">${x.count}</td></tr>`).join("");
+    const phantomRows = (m.drift.phantomRefs || []).map((x) => `<tr><td>[[${esc(x.target)}]]</td><td style="text-align:right;color:var(--bad)">${x.count}</td></tr>`).join("");
+
+    const logRows = (m.recentRuns || []).slice(0, 25).map((r) => {
+      const f = r.faithfulness || {};
+      const sc = f.score != null ? `<span class="chip ${scoreBandClass(f.score)}">${f.score}</span>` : `<span class="chip">n/a</span>`;
+      const scope = r.scope ? `${r.scope.inScope}/${r.scope.total}` : "—";
+      return `
+        <tr>
+          <td style="color:var(--ink-mute)">${esc(formatRelTime(r.createdAt))}</td>
+          <td><span class="chip">${esc(r.agent || "claude")}</span></td>
+          <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(r.query || "")}">${esc(r.query || "(empty)")}</td>
+          <td>${sc}</td>
+          <td>${esc(scope)}</td>
+          <td>${(r.read || []).length} / ${(r.cited || []).length} / ${(r.missing || []).length}</td>
+        </tr>`;
+    }).join("");
+
+    container.innerHTML = `
+      <div class="view-wrap">
+        <div class="view-head">
+          <h1>The <em>Observatory</em></h1>
+          <span class="mono" style="font-size:11.5px;color:var(--ink-mute);">${m.totalRuns} archived run${m.totalRuns === 1 ? "" : "s"} · .brain-operator/runs.jsonl</span>
+        </div>
+        <div class="obs-instrument">
+          <div class="obs-dial">
+            <svg viewBox="0 0 220 125" style="width:100%;max-width:200px;display:block;margin:0 auto;">
+              <path d="M20 112 A90 90 0 0 1 200 112" fill="none" stroke="var(--rule)" stroke-width="9"/>
+              <path d="M20 112 A90 90 0 0 1 200 112" fill="none" stroke="var(--amber)" stroke-width="9"
+                    stroke-dasharray="${arcLen}" stroke-dashoffset="${dashOffset.toFixed(1)}"/>
+            </svg>
+            <div class="obs-dial-val">${mean != null ? `${mean}<span style="font-size:16px;color:var(--ink-mute)">/100</span>` : "—"}</div>
+            <div class="stat-lbl">Mean Faithfulness (${m.scoredRuns} scored)</div>
+          </div>
+          <div class="obs-trend">
+            <div class="section-h" style="margin-top:0">Faithfulness Over Time</div>
+            ${trendSvg}
+          </div>
+        </div>
+
+        <div class="section-h">Provider Leaderboard</div>
+        ${lbRows ? `
+          <table class="data-table" style="margin-bottom:24px;">
+            <thead><tr><th>Provider</th><th>Runs</th><th>Mean Faithfulness</th><th>Avg Read</th><th>Phantom Refs</th></tr></thead>
+            <tbody>${lbRows}</tbody>
+          </table>` : `<div class="empty-muted" style="margin-bottom:20px;">No archived runs yet. Run a thread to chart Claude, Codex, and Gemini side by side.</div>`}
+
+        <div class="obs-two">
+          <div>
+            <div class="section-h">Cited But Unread</div>
+            ${unreadRows ? `<table class="data-table"><tbody>${unreadRows}</tbody></table>` : `<div class="empty-muted">None recorded.</div>`}
+          </div>
+          <div>
+            <div class="section-h">Phantom [[Links]]</div>
+            ${phantomRows ? `<table class="data-table"><tbody>${phantomRows}</tbody></table>` : `<div class="empty-muted">None recorded.</div>`}
+          </div>
+        </div>
+
+        <div class="section-h">Run Archive</div>
+        ${logRows ? `
+          <table class="data-table">
+            <thead><tr><th>When</th><th>Agent</th><th>Query</th><th>Score</th><th>Scope</th><th>R / C / M</th></tr></thead>
+            <tbody>${logRows}</tbody>
+          </table>` : `<div class="empty-muted">No runs recorded in this workspace yet.</div>`}
+      </div>`;
+  }
+
+  // ---------- Rendering: Right Inspector ----------
+
+  function colorizeDiff(diffText) {
+    if (!diffText) return "";
+    return diffText.split("\n").map((line) => {
+      if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("diff --git")) {
+        return `<span class="dl-head">${esc(line)}</span>`;
+      }
+      if (line.startsWith("@@")) return `<span class="dl-hunk">${esc(line)}</span>`;
+      if (line.startsWith("+")) return `<span class="dl-add">${esc(line)}</span>`;
+      if (line.startsWith("-")) return `<span class="dl-del">${esc(line)}</span>`;
+      return `<span class="dl-ctx">${esc(line)}</span>`;
+    }).join("");
+  }
+
+  function renderInspector() {
+    document.querySelectorAll(".insp-tab").forEach((el) => {
+      el.classList.toggle("active", el.dataset.itab === state.inspectorTab);
+    });
+    const body = $("inspBody");
+    const t = selectedThread();
+
+    if (state.inspectorTab === "diff") {
+      if (!t) {
+        body.innerHTML = `<div class="empty-muted">Select a thread to inspect its live git diff and worktree actions.</div>`;
+        return;
+      }
+      const d = state.diffCache;
+      if (!d) {
+        body.innerHTML = `<div class="empty-muted">Loading git diff…</div>`;
+        return;
+      }
+      if (!d.isGitRepo) {
+        body.innerHTML = `<div class="empty-muted">This workspace is not a git repository. Initialize git to enable worktrees and diff review.</div>`;
+        return;
+      }
+
+      const secretBanner = d.secretWarnings && d.secretWarnings.length
+        ? `<div class="error-banner" style="margin-bottom:10px;">Secret scan blocked: ${esc(d.secretWarnings.map((w) => `${w.path} (${w.label})`).join(", "))}</div>`
+        : `<div class="chip good" style="margin-bottom:10px;">✓ Secret scan clean</div>`;
+
+      const fileRows = (d.files || []).map((f) => `
+        <div class="diff-file-row">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(f.path)}">
+            <span style="color:var(--amber);margin-right:6px;">${esc(f.status)}</span>${esc(f.path)}
+          </span>
+          <span><span class="diff-add">+${f.insertions}</span> <span class="diff-del">-${f.deletions}</span></span>
+        </div>`).join("");
+
+      const aheadHtml = (d.aheadCommits && d.aheadCommits.length)
+        ? `<div class="section-h">Commits Ahead of ${esc(d.baseRef || "base")} (${d.aheadCommits.length})</div>
+           <div class="kv-box">${d.aheadCommits.map((c) => `<div>${esc(c)}</div>`).join("")}</div>`
+        : "";
+
+      body.innerHTML = `
+        <div class="kv-box" style="margin-bottom:10px;">
+          <div class="kv-row"><span class="kv-k">Workspace</span><span class="kv-v">${d.isWorktree ? "Isolated worktree" : "Main checkout"}</span></div>
+          <div class="kv-row"><span class="kv-k">Branch</span><span class="kv-v">${esc(d.branch || "—")} @ ${esc(d.headSha || "—")}</span></div>
+          <div class="kv-row"><span class="kv-k">Changes</span><span class="kv-v"><span class="diff-add">+${d.totalInsertions}</span> / <span class="diff-del">-${d.totalDeletions}</span></span></div>
+        </div>
+        ${secretBanner}
+        <div class="section-h">Uncommitted Files (${(d.files || []).length})</div>
+        <div class="kv-box" style="padding:2px 6px;">
+          ${fileRows || `<div class="empty-muted" style="padding:6px;">Working tree clean.</div>`}
+        </div>
+        ${aheadHtml}
+        ${d.diff ? `<div class="section-h">Unified Diff</div><div class="diff-pre">${colorizeDiff(d.diff)}</div>` : ""}
+        <div class="wt-actions">
+          ${(d.files && d.files.length) ? `
+            <div class="wt-commit-row">
+              <input id="wtCommitMsg" type="text" placeholder="Commit message…">
+              <button class="btn-primary" id="wtCommitBtn">Commit</button>
+            </div>` : ""}
+          ${d.isWorktree ? `
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn-primary" id="wtMergeBtn" style="flex:1;">Merge into ${esc(d.baseRef || "base")}</button>
+              <button class="btn-danger" id="wtDiscardBtn">Discard Worktree</button>
+            </div>` : ""}
+        </div>`;
+
+      const commitBtn = $("wtCommitBtn");
+      if (commitBtn) {
+        commitBtn.onclick = async () => {
+          const msg = $("wtCommitMsg").value.trim();
+          if (!msg) { toast("Enter a commit message first", true); return; }
+          try {
+            const res = await api(`/api/threads/${encodeURIComponent(t.id)}/commit`, {
+              method: "POST", body: JSON.stringify({ message: msg }),
+            });
+            toast(`Committed ${res.sha || ""}`);
+            await loadDiff();
+            await loadContext();
+          } catch (err) { toast(err.message, true); }
+        };
+      }
+      const mergeBtn = $("wtMergeBtn");
+      if (mergeBtn) {
+        mergeBtn.onclick = async () => {
+          try {
+            const commitMsg = $("wtCommitMsg") ? $("wtCommitMsg").value.trim() : "";
+            const res = await api(`/api/threads/${encodeURIComponent(t.id)}/merge`, {
+              method: "POST",
+              body: JSON.stringify({ commitMessage: commitMsg || undefined, cleanup: true }),
+            });
+            toast(`Merged ${res.mergedBranch} into ${res.intoBranch} (${res.headSha || ""})`);
+            await refreshBootstrap();
+            await loadThreadDetail(t.id);
+            await loadDiff();
+          } catch (err) { toast(err.message, true); }
+        };
+      }
+      const discardBtn = $("wtDiscardBtn");
+      if (discardBtn) {
+        discardBtn.onclick = async () => {
+          if (!confirm(`Discard worktree ${t.worktree.branch} and delete its uncommitted changes?`)) return;
+          try {
+            await api(`/api/threads/${encodeURIComponent(t.id)}/discard`, { method: "POST" });
+            toast("Worktree removed");
+            await refreshBootstrap();
+            await loadThreadDetail(t.id);
+            await loadDiff();
+          } catch (err) { toast(err.message, true); }
+        };
+      }
+      return;
+    }
+
+    if (state.inspectorTab === "trace") {
+      const turns = state.selectedThreadTurns || [];
+      const turn = turns.find((x) => x.id === state.selectedTurnId) || turns[turns.length - 1];
+      if (!turn || !turn.trace) {
+        body.innerHTML = `<div class="empty-muted">Run a turn to inspect its 8-cell Answer Trace and export Agent Receipts.</div>`;
+        return;
+      }
+      const tr = turn.trace;
+      const f = tr.faithfulness || {};
+      const listHtml = (arr, emptyText) => arr && arr.length
+        ? arr.map((x) => `<div style="word-break:break-word;">· ${esc(x)}</div>`).join("")
+        : `<div class="empty-muted">${esc(emptyText)}</div>`;
+
+      body.innerHTML = `
+        <div class="kv-box">
+          <div class="kv-row"><span class="kv-k">Faithfulness</span><span class="kv-v"><span class="chip ${scoreBandClass(f.score)}">${f.score != null ? `${f.score}/100 (${f.label})` : "n/a"}</span></span></div>
+          <div class="kv-row"><span class="kv-k">Breakdown</span><span class="kv-v">${f.groundedCitations || 0} grounded · ${f.ungroundedCitations || 0} unread · ${f.phantomRefs || 0} phantom</span></div>
+          <div class="kv-row"><span class="kv-k">Catalog</span><span class="kv-v">${tr.catalog.included} listed / ${tr.catalog.total} in scope</span></div>
+          ${tr.scope ? `<div class="kv-row"><span class="kv-k">Scope</span><span class="kv-v">${tr.scope.inScope} of ${tr.scope.total} (${tr.scope.excluded} withheld)</span></div>` : ""}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px;">
+          <button class="btn-secondary" id="inspCopyMd" style="flex:1;">Copy Receipt (MD)</button>
+          <button class="btn-secondary" id="inspCopyJson" style="flex:1;">Copy Receipt (JSON)</button>
+        </div>
+        <div class="section-h">Surfaced Pointers (${(tr.surfaced || []).length})</div>
+        <div class="kv-box">${listHtml((tr.surfaced || []).map((s) => `${s.path}${s.reason ? ` — ${s.reason}` : ""}`), "none")}</div>
+        <div class="section-h">Searched (${(tr.searched || []).length})</div>
+        <div class="kv-box">${listHtml((tr.searched || []).map((s) => `${s.kind}: ${s.query}`), "none")}</div>
+        <div class="section-h">Read (${(tr.read || []).length})</div>
+        <div class="kv-box">${listHtml(tr.read, "none")}</div>
+        <div class="section-h">Cited [[Links]] (${(tr.cited || []).length})</div>
+        <div class="kv-box">${listHtml(tr.cited, "none")}</div>
+        <div class="section-h">Missing / Phantom Refs (${(tr.missing || []).length})</div>
+        <div class="kv-box">${listHtml(tr.missing, "none")}</div>
+        <div class="section-h">Warnings (${(tr.warnings || []).length})</div>
+        <div class="kv-box">${listHtml(tr.warnings, "none")}</div>`;
+
+      $("inspCopyMd").onclick = async () => {
+        const text = await api(`/api/threads/${encodeURIComponent(t.id)}/turns/${encodeURIComponent(turn.id)}/receipt?format=markdown`);
+        await navigator.clipboard.writeText(text);
+        toast("Copied Markdown Receipt");
+      };
+      $("inspCopyJson").onclick = async () => {
+        const text = await api(`/api/threads/${encodeURIComponent(t.id)}/turns/${encodeURIComponent(turn.id)}/receipt?format=json`);
+        await navigator.clipboard.writeText(typeof text === "string" ? text : JSON.stringify(text, null, 2));
+        toast("Copied JSON Receipt");
+      };
+      return;
+    }
+
+    // Context tab
+    const ctx = state.contextCache;
+    if (!ctx) {
+      body.innerHTML = `<div class="empty-muted">Loading workspace context…</div>`;
+      return;
+    }
+    const reasons = Object.entries((ctx.scope && ctx.scope.byReason) || {})
+      .map(([k, v]) => `<div class="kv-row"><span class="kv-k">${esc(k)}</span><span class="kv-v">${v}</span></div>`)
+      .join("");
+    const handoffRows = (ctx.handoffs || []).slice(0, 8).map((h) => `
+      <div style="border-bottom:1px solid var(--rule-soft);padding:6px 0;">
+        <div style="display:flex;justify-content:space-between;color:var(--ink-mute);font-size:10px;">
+          <span>${esc(h.agent || "claude")} · ${esc(h.mode || "")}</span>
+          <span>${esc(h.timestamp || "")}</span>
+        </div>
+        <div style="color:var(--ink-dim);font-size:11.5px;margin-top:2px;">${esc(h.summary || "")}</div>
+      </div>`).join("");
+
+    body.innerHTML = `
+      <div class="section-h">Workspace Governance</div>
+      <div class="kv-box">
+        <div class="kv-row"><span class="kv-k">Profile</span><span class="kv-v">${ctx.profile ? esc(ctx.profile.label) : ctx.pendingProfile ? `${esc(ctx.pendingProfile.label)} (unconfirmed)` : "General repository"}</span></div>
+        <div class="kv-row"><span class="kv-k">Catalog</span><span class="kv-v">${ctx.scope.inScope} in scope / ${ctx.scope.total} total</span></div>
+        <div class="kv-row"><span class="kv-k">Withheld</span><span class="kv-v">${ctx.scope.excluded}</span></div>
+        <div class="kv-row"><span class="kv-k">Git</span><span class="kv-v">${ctx.git.isGitRepo ? `${esc(ctx.git.branch)} (${ctx.git.dirtyCount} dirty)` : "no git"}</span></div>
+      </div>
+      ${ctx.activeProjects && ctx.activeProjects.length ? `
+        <div class="section-h">Active Projects (Current State)</div>
+        <div class="kv-box">${ctx.activeProjects.map((p) => `<div>· ${esc(p)}</div>`).join("")}</div>` : ""}
+      ${reasons ? `<div class="section-h">Withheld By Reason</div><div class="kv-box">${reasons}</div>` : ""}
+      <div class="section-h">Cross-CLI Handoff Log (.brain-operator/handoffs.jsonl)</div>
+      <div class="kv-box">${handoffRows || `<div class="empty-muted">No handoffs recorded yet.</div>`}</div>`;
+  }
+
+  function syncComposerControls(t) {
+    const isRunning = t.status === "running" || state.liveStreams.has(t.id);
+    $("stopBtn").hidden = !isRunning;
+    $("sendBtn").disabled = isRunning;
+
+    const provSel = $("compProvider");
+    const modeSel = $("compMode");
+    if (provSel.dataset.threadBound !== t.id) {
+      provSel.value = t.provider || "claude";
+      modeSel.value = t.mode || "read-only";
+      $("compModel").value = t.model || "";
+      provSel.dataset.threadBound = t.id;
+      renderProviders();
+    }
+    updateHandoffHint(t);
+  }
+
+  function updateHandoffHint(t) {
+    const hint = $("handoffHint");
+    if (!t || !state.selectedThreadTurns.length) { hint.hidden = true; return; }
+    const chosen = $("compProvider").value;
+    const lastTurn = state.selectedThreadTurns[state.selectedThreadTurns.length - 1];
+    if (lastTurn && lastTurn.provider && lastTurn.provider !== chosen) {
+      hint.hidden = false;
+      hint.textContent = `Cross-provider handoff active: bridging ${lastTurn.provider} → ${chosen} (${state.selectedThreadTurns.length} prior turn${state.selectedThreadTurns.length === 1 ? "" : "s"}).`;
+    } else {
+      hint.hidden = true;
+    }
+  }
+
+  function updateLayoutClasses() {
+    const root = $("appRoot");
+    root.classList.toggle("inspector-closed", !state.inspectorOpen);
+    root.classList.toggle("inspector-force-open", state.inspectorOpen);
+  }
+
+  function toggleInspector() {
+    state.inspectorOpen = !state.inspectorOpen;
+    updateLayoutClasses();
+    renderTopbar();
+    if (state.inspectorOpen) renderInspector();
+  }
+
+  function setView(v) {
+    state.view = v;
+    document.querySelectorAll(".nav-tab").forEach((el) => el.classList.toggle("active", el.dataset.view === v));
+    renderTopbar();
+    renderStage();
+    renderThreadList();
+    if (v === "observatory") loadObservatory();
+    if (v === "fleet") loadContext();
+  }
+
+  function renderAll() {
+    $("verPill").textContent = `v${state.version}`;
+    renderWorkspaces();
+    renderProviders();
+    renderThreadList();
+    renderTopbar();
+    renderStage();
+    renderInspector();
+  }
+
+  // ---------- Data Loading ----------
+
+  function upsertThreadLocal(thread) {
+    if (!thread) return;
+    const idx = state.threads.findIndex((t) => t.id === thread.id);
+    if (idx >= 0) state.threads[idx] = thread;
+    else state.threads.unshift(thread);
+  }
+
+  async function refreshBootstrap() {
+    const data = await api("/api/bootstrap");
+    state.version = data.version || state.version;
+    state.providers = data.providers || {};
+    state.workspaces = data.workspaces || [];
+    if (!state.activeWorkspaceId || !state.workspaces.some((w) => w.id === state.activeWorkspaceId)) {
+      state.activeWorkspaceId = data.activeWorkspaceId;
+    }
+    state.threads = data.threads || [];
+    for (const t of state.threads) {
+      if (t.activeRun) state.liveStreams.set(t.id, t.activeRun);
+    }
+    renderAll();
+    if (state.activeWorkspaceId) {
+      loadContext();
+      loadObservatory();
+    }
+  }
+
+  async function selectThread(threadId) {
+    state.selectedThreadId = threadId;
+    state.view = "threads";
+    document.querySelectorAll(".nav-tab").forEach((el) => el.classList.toggle("active", el.dataset.view === "threads"));
+    $("compProvider").dataset.threadBound = "";
+    await loadThreadDetail(threadId);
+    renderAll();
+    loadDiff();
+    $("composerInput").focus();
+  }
+
+  async function loadThreadDetail(threadId) {
+    if (!threadId) return;
+    try {
+      const data = await api(`/api/threads/${encodeURIComponent(threadId)}`);
+      upsertThreadLocal(data.thread);
+      state.selectedThreadTurns = data.turns || [];
+      if (data.thread.activeRun) state.liveStreams.set(threadId, data.thread.activeRun);
+      const last = state.selectedThreadTurns[state.selectedThreadTurns.length - 1];
+      state.selectedTurnId = last ? last.id : null;
+      renderTopbar();
+      renderStage();
+      renderInspector();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  async function loadDiff() {
+    if (!state.selectedThreadId) return;
+    try {
+      state.diffCache = await api(`/api/threads/${encodeURIComponent(state.selectedThreadId)}/diff`);
+      if (state.inspectorTab === "diff") renderInspector();
+    } catch { /* ignore */ }
+  }
+
+  async function loadContext() {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    try {
+      state.contextCache = await api(`/api/workspaces/${encodeURIComponent(ws.id)}/context`);
+      if (state.inspectorTab === "context") renderInspector();
+      if (state.view === "fleet") renderStage();
+    } catch { /* ignore */ }
+  }
+
+  async function loadObservatory() {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    try {
+      state.observatoryCache = await api(`/api/workspaces/${encodeURIComponent(ws.id)}/observatory`);
+      if (state.view === "observatory") renderStage();
+    } catch { /* ignore */ }
+  }
+
+  async function quickCreateThread(mode) {
+    const ws = activeWorkspace();
+    if (!ws) { openModal("addWsModal"); return; }
+    try {
+      const res = await api("/api/threads", {
+        method: "POST",
+        body: JSON.stringify({
+          workspaceId: ws.id,
+          mode,
+          useWorktree: mode === "worktree",
+        }),
+      });
+      upsertThreadLocal(res.thread);
+      await selectThread(res.thread.id);
+      if (mode === "worktree") toast(`Created isolated worktree ${res.thread.worktree.branch}`);
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  async function sendComposerPrompt() {
+    const t = selectedThread();
+    if (!t) return;
+    const input = $("composerInput");
+    const prompt = input.value.trim();
+    if (!prompt) return;
+
+    const provider = $("compProvider").value;
+    const mode = $("compMode").value;
+    const model = $("compModel").value.trim();
+
+    try {
+      input.value = "";
+      await api(`/api/threads/${encodeURIComponent(t.id)}/turns`, {
+        method: "POST",
+        body: JSON.stringify({ prompt, provider, mode, model }),
+      });
+    } catch (err) {
+      input.value = prompt;
+      toast(err.message, true);
+    }
+  }
+
+  // ---------- Modals & Command Palette ----------
+
+  function openModal(id) {
+    $(id).hidden = false;
+    const firstInput = $(id).querySelector("input");
+    if (firstInput) setTimeout(() => firstInput.focus(), 20);
+  }
+
+  function closeModal(id) {
+    $(id).hidden = true;
+  }
+
+  function openNewThreadModal(defaultMode) {
+    if (!activeWorkspace()) { openModal("addWsModal"); return; }
+    $("ntTitle").value = "";
+    $("ntModel").value = "";
+    $("ntMode").value = defaultMode || "read-only";
+    const provs = state.providers;
+    $("ntProvider").value = (provs.claude && provs.claude.available) ? "claude"
+      : (provs.gemini && provs.gemini.available) ? "gemini"
+      : (provs.codex && provs.codex.available) ? "codex"
+      : "sim";
+    openModal("newThreadModal");
+  }
+
+  function renderPalette(query) {
+    const q = String(query || "").trim().toLowerCase();
+    const actions = [
+      { label: "New Read-only Thread", hint: "Ask / inspect", run: () => quickCreateThread("read-only") },
+      { label: "New Isolated Worktree Thread", hint: "Orca parallel branch", run: () => quickCreateThread("worktree") },
+      { label: "Open Agent Fleet & Worktrees", hint: "View", run: () => setView("fleet") },
+      { label: "Open Observatory", hint: "Faithfulness dashboard", run: () => setView("observatory") },
+      { label: "Add Repository or Vault", hint: "Workspace", run: () => openModal("addWsModal") },
+      { label: "Toggle Inspector Drawer", hint: "Diff / Trace / Context", run: () => toggleInspector() },
+      ...visibleThreads().map((t) => ({
+        label: t.title,
+        hint: `${t.provider}${t.worktree ? ` · ${t.worktree.branch}` : ""}`,
+        run: () => selectThread(t.id),
+      })),
+    ].filter((a) => !q || a.label.toLowerCase().includes(q) || a.hint.toLowerCase().includes(q));
+
+    const listEl = $("paletteList");
+    listEl.innerHTML = actions.slice(0, 14).map((a, i) => `
+      <button class="palette-row${i === 0 ? " sel" : ""}" data-idx="${i}">
+        <span>${esc(a.label)}</span>
+        <span class="palette-hint">${esc(a.hint)}</span>
+      </button>`).join("");
+    listEl._actions = actions;
+    listEl.querySelectorAll(".palette-row").forEach((btn) => {
+      btn.onclick = () => {
+        const act = actions[Number(btn.dataset.idx)];
+        closeModal("paletteModal");
+        if (act) act.run();
+      };
+    });
+  }
+
+  // ---------- Live SSE Subscription ----------
+
+  function connectSSE() {
+    const es = new EventSource("/api/events");
+
+    es.addEventListener("hello", () => {
+      state.sseConnected = true;
+      renderTopbar();
+    });
+
+    es.addEventListener("thread:created", (e) => {
+      const { thread } = JSON.parse(e.data);
+      upsertThreadLocal(thread);
+      renderThreadList();
+      if (state.view === "fleet") renderStage();
+    });
+
+    es.addEventListener("thread:updated", (e) => {
+      const { thread } = JSON.parse(e.data);
+      upsertThreadLocal(thread);
+      renderThreadList();
+      if (thread.id === state.selectedThreadId) renderTopbar();
+      if (state.view === "fleet") renderStage();
+    });
+
+    es.addEventListener("thread:deleted", (e) => {
+      const { threadId } = JSON.parse(e.data);
+      state.threads = state.threads.filter((t) => t.id !== threadId);
+      state.liveStreams.delete(threadId);
+      if (state.selectedThreadId === threadId) {
+        state.selectedThreadId = null;
+        state.selectedThreadTurns = [];
+      }
+      renderAll();
+    });
+
+    es.addEventListener("run:started", (e) => {
+      const { threadId, run, thread } = JSON.parse(e.data);
+      upsertThreadLocal(thread);
+      state.liveStreams.set(threadId, run);
+      renderThreadList();
+      if (threadId === state.selectedThreadId && state.view === "threads") {
+        renderStage();
+      } else if (state.view === "fleet") {
+        renderStage();
+      }
+    });
+
+    es.addEventListener("run:event", (e) => {
+      const { threadId, event, statusText } = JSON.parse(e.data);
+      const live = state.liveStreams.get(threadId);
+      if (!live) return;
+      if (statusText) live.statusText = statusText;
+      if (event.type === "delta" && event.text) {
+        live.answerBuffer = (live.answerBuffer || "") + event.text;
+        if (threadId === state.selectedThreadId && state.view === "threads") {
+          const body = $("liveAnswerBody");
+          if (body) {
+            body.innerHTML = renderMarkdown(live.answerBuffer);
+            const sc = $("stageScroll");
+            sc.scrollTop = sc.scrollHeight;
+            return;
+          }
+        }
+      } else if (event.type === "tool") {
+        live.toolCalls = live.toolCalls || [];
+        const existing = live.toolCalls.find((x) => x.id === event.id);
+        if (existing) Object.assign(existing, event);
+        else live.toolCalls.push(event);
+      } else if (event.type === "tool_result" && event.id) {
+        const existing = (live.toolCalls || []).find((x) => x.id === event.id);
+        if (existing) existing.status = event.status || "completed";
+      }
+      if (threadId === state.selectedThreadId && state.view === "threads") {
+        renderStage();
+      }
+    });
+
+    const onRunFinished = (e) => {
+      const { threadId, turn, thread } = JSON.parse(e.data);
+      state.liveStreams.delete(threadId);
+      upsertThreadLocal(thread);
+      renderThreadList();
+      if (threadId === state.selectedThreadId) {
+        state.selectedThreadTurns.push(turn);
+        state.selectedTurnId = turn.id;
+        renderTopbar();
+        renderStage();
+        renderInspector();
+        loadDiff();
+      } else if (state.view === "fleet") {
+        renderStage();
+      }
+      loadObservatory();
+      loadContext();
+    };
+    es.addEventListener("run:completed", onRunFinished);
+    es.addEventListener("run:cancelled", onRunFinished);
+    es.addEventListener("run:error", onRunFinished);
+
+    es.addEventListener("worktree:changed", () => {
+      loadDiff();
+      loadContext();
+    });
+
+    es.onerror = () => {
+      state.sseConnected = false;
+      renderTopbar();
+    };
+  }
+
+  // ---------- Event Wiring ----------
+
+  $("wsSelect").addEventListener("change", (e) => {
+    state.activeWorkspaceId = e.target.value;
+    state.selectedThreadId = null;
+    state.selectedThreadTurns = [];
+    state.diffCache = null;
+    renderAll();
+    loadContext();
+    loadObservatory();
+  });
+
+  $("addWsBtn").onclick = () => openModal("addWsModal");
+  $("newThreadBtn").onclick = () => openNewThreadModal("read-only");
+  $("openPaletteBtn").onclick = () => {
+    $("paletteInput").value = "";
+    renderPalette("");
+    openModal("paletteModal");
+  };
+
+  $("threadSearch").addEventListener("input", (e) => {
+    state.searchQuery = e.target.value;
+    renderThreadList();
+  });
+  $("toggleArchiveBtn").onclick = () => {
+    state.showArchived = !state.showArchived;
+    $("toggleArchiveBtn").classList.toggle("amber", state.showArchived);
+    renderThreadList();
+  };
+
+  document.querySelectorAll(".nav-tab").forEach((btn) => {
+    btn.onclick = () => setView(btn.dataset.view);
+  });
+
+  document.querySelectorAll(".insp-tab").forEach((btn) => {
+    btn.onclick = () => {
+      state.inspectorTab = btn.dataset.itab;
+      renderInspector();
+      if (state.inspectorTab === "diff") loadDiff();
+      if (state.inspectorTab === "context") loadContext();
+    };
+  });
+  $("refreshInspBtn").onclick = () => {
+    if (state.inspectorTab === "diff") loadDiff();
+    else if (state.inspectorTab === "context") loadContext();
+    else renderInspector();
+  };
+
+  $("compProvider").addEventListener("change", () => {
+    renderProviders();
+    updateHandoffHint(selectedThread());
+  });
+  $("sendBtn").onclick = sendComposerPrompt;
+  $("stopBtn").onclick = async () => {
+    const t = selectedThread();
+    if (!t) return;
+    await api(`/api/threads/${encodeURIComponent(t.id)}/cancel`, { method: "POST" });
+    toast("Cancelling run…");
+  };
+  $("composerInput").addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      sendComposerPrompt();
+    } else if (e.key === "Escape") {
+      const t = selectedThread();
+      if (t && (t.status === "running" || state.liveStreams.has(t.id))) {
+        api(`/api/threads/${encodeURIComponent(t.id)}/cancel`, { method: "POST" });
+      }
+    }
+  });
+
+  $("ntCreateBtn").onclick = async () => {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    const mode = $("ntMode").value;
+    try {
+      const res = await api("/api/threads", {
+        method: "POST",
+        body: JSON.stringify({
+          workspaceId: ws.id,
+          title: $("ntTitle").value.trim(),
+          provider: $("ntProvider").value,
+          model: $("ntModel").value.trim(),
+          mode,
+          useWorktree: mode === "worktree",
+        }),
+      });
+      closeModal("newThreadModal");
+      upsertThreadLocal(res.thread);
+      await selectThread(res.thread.id);
+      toast(`Created thread "${res.thread.title}"`);
+    } catch (err) {
+      toast(err.message, true);
+    }
+  };
+
+  $("awAddBtn").onclick = async () => {
+    const p = $("awPath").value.trim();
+    if (!p) { toast("Enter a folder path", true); return; }
+    try {
+      const res = await api("/api/workspaces", {
+        method: "POST",
+        body: JSON.stringify({ path: p, name: $("awName").value.trim() }),
+      });
+      closeModal("addWsModal");
+      $("awPath").value = "";
+      $("awName").value = "";
+      state.activeWorkspaceId = res.workspace.id;
+      await refreshBootstrap();
+      toast(`Added workspace "${res.workspace.name}"`);
+    } catch (err) {
+      toast(err.message, true);
+    }
+  };
+
+  $("paletteInput").addEventListener("input", (e) => renderPalette(e.target.value));
+  $("paletteInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const first = $("paletteList")._actions && $("paletteList")._actions[0];
+      if (first) { closeModal("paletteModal"); first.run(); }
+    }
+  });
+
+  document.querySelectorAll("[data-close-modal]").forEach((b) => {
+    b.onclick = () => closeModal(b.dataset.closeModal);
+  });
+  document.querySelectorAll(".modal-backdrop").forEach((m) => {
+    m.addEventListener("click", (e) => { if (e.target === m) m.hidden = true; });
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      $("paletteInput").value = "";
+      renderPalette("");
+      openModal("paletteModal");
+    } else if (e.key === "Escape") {
+      ["newThreadModal", "addWsModal", "paletteModal"].forEach((id) => closeModal(id));
+    }
+  });
+
+  // Boot
+  updateLayoutClasses();
+  connectSSE();
+  refreshBootstrap().catch((err) => toast(`Failed to load: ${err.message}`, true));
+})();
+</script>
+</body>
+</html>

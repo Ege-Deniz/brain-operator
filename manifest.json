@@ -1,9 +1,9 @@
 {
   "id": "brain-ask",
   "name": "Brain Operator",
-  "version": "0.7.0",
+  "version": "0.9.0",
   "minAppVersion": "1.4.0",
-  "description": "Agent DevTools for local AI developers using Claude Code and Codex with markdown vaults. One Operator front door you point to resume or start fresh, bringing your files, continuity, and the right context. Scores each run's retrieval faithfulness and charts it over time in a local Observatory, exports Answer Trace and Agent Receipts, and keeps writes scoped and git-checked. Technical preview.",
+  "description": "Local-first multi-agent Workbench and Obsidian DevTools for Claude Code, Codex, and Gemini CLI. Run parallel threads in isolated git worktrees, switch providers mid-thread with fenced handoffs, scope retrieval to your vault contract, score every run's retrieval faithfulness, and inspect live diffs in one warm instrument.",
   "author": "Ege Deniz",
   "authorUrl": "https://rowy.engineer",
   "isDesktopOnly": true

@@ -1,3 +1,6 @@
+<!-- GENERATED FILE — do not edit by hand.
+     Source: getGovernedStarterVault() in main.js
+     Regenerate: node tools/sync-starter-examples.js -->
 ---
 name: karpathy-guidelines
 description: Behavioral guidelines to reduce common LLM coding mistakes. Use when writing, reviewing, or refactoring code to avoid overcomplication, make surgical changes, surface assumptions, and define verifiable success criteria.

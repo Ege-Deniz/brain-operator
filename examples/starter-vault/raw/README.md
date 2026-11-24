@@ -1,3 +1,6 @@
+<!-- GENERATED FILE — do not edit by hand.
+     Source: getGovernedStarterVault() in main.js
+     Regenerate: node tools/sync-starter-examples.js -->
 # raw/
 
 Drop sources here: articles, PDFs, slides, screenshots, web clippings, voice memos.

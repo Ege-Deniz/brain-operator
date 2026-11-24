@@ -1,65 +1,47 @@
-# Quickstart — Your First Seven Days
+<!-- GENERATED FILE — do not edit by hand.
+     Source: getGovernedStarterVault() in main.js
+     Regenerate: node tools/sync-starter-examples.js -->
+# Quickstart
 
-A day-by-day playbook to take this empty starter from "freshly cloned" to "actually useful." None of these are mandatory. They are the minimum-viable rituals that turn a structured filesystem into a brain that compounds.
+Enough to make the vault useful. There is no seven-day programme and nothing to schedule — a brain that runs on its own is the failure mode this starter is shaped to avoid.
 
-## Day 1 — Personalize and orient
+## 1. Make it yours
 
-1. Open `CLAUDE.md`. Replace `{{NAME}}`, `{{ROLE}}`, and `{{STACK}}` with your real values. Skim the workflows section so you know what the LLM is supposed to do.
-2. Open `wiki/_common/operating-mode.md`. The starter ships with three generic priority bands. Either keep them or rewrite them so they reflect your real lanes (e.g. "money-making over learning", "research over publication").
-3. In Obsidian, run the Brain Operator command `Ask`. Ask it: *"What's in my wiki right now?"* It will read `index.md` and confirm the wiki is empty. That's normal.
+Open `CLAUDE.md` and replace `{{NAME}}`, `{{ROLE}}`, and `{{STACK}}`. Read `wiki/_common/context-routing.md` once so you know what the agent will and will not do on its own.
 
-## Day 2 — Drop your first source
+Then run **Operator** and ask: *"What's in my wiki right now?"* On a fresh vault the honest answer is "almost nothing" — that is the baseline.
 
-1. Pick one article, paper, or PDF you genuinely want to remember. Save it to `raw/`.
-2. In Obsidian, run `Ask` with: *"Process the new source in raw/. Discuss the takeaways before filing."*
-3. The LLM will read it, propose a wiki page, and ask which category to file it under. Approve.
-4. After it files, run `Ask` again: *"Show me the index."* You should see one entry. The wiki is now non-empty.
+## 2. File something real
 
-## Day 3 — Ask a question that exercises the wiki
+Put one article, paper, or PDF you actually want to remember into `raw/`.
 
-1. Run `Ask` with a question about the topic you just ingested: *"What's the strongest argument for X based on what I've filed?"*
-2. The LLM will return an answer plus an Answer Trace showing which pages it considered, used, and cited.
-3. If the answer surfaced new analysis, run `File Back` to save it as a wiki page. Two pages now.
+Ask: *"Read the new source in raw/ and show me what's worth keeping before filing anything."* You will get a summary and a proposed destination. Nothing is written until you approve it.
 
-## Day 4 — Run your first audit
+## 3. Ask something the vault can answer
 
-1. Run `Evolve`. The LLM will report you have only 2 pages — too few for meaningful gap detection. That's fine.
-2. It will propose 3 forward-looking page ideas based on your User Context. Pick one. The LLM creates the page from scratch (research-backed if it has a research skill, otherwise from your prior conversations).
+Ask a question about what you just filed. You get the answer plus an Answer Trace: which pages were offered, which were read, which were cited, and a faithfulness score for how well the citations match what was actually opened.
 
-## Day 5 — Set up the operating layer
+If the score is low, the retrieval is wrong — not your question. That is the point of showing it.
 
-1. Open `wiki/operating/Project Triage.md`. List your top 3 active projects, status (active/paused/contracted), and a kill rule for each.
-2. Open `wiki/operating/Decision Log.md`. Record one open decision you've been putting off. Set a deadline.
-3. Run `Ask`: *"What should I work on this week?"* The LLM will read the operating layer + recent log entries and recommend.
+## 4. Keep Current State honest
 
-## Day 6 — First Ship
+`wiki/operating/Current State.md` is the only page that says what is live. Brain Operator reads it to decide which project folders are worth surfacing, so a stale entry costs you relevance.
 
-1. Run `Ship`. The LLM reads `_proposals/queue.md`, classifies each proposal, and either executes (Level 0), drafts (Level 1), or surfaces a command (Level 2).
-2. If queue is empty: run `Evolve` first to populate it, then `Ship`.
+Update it when a binding fact changes. Delete resolved items instead of letting it grow into a dashboard.
 
-## Day 7 — Schedule and step back
+## 5. Let it stay small
 
-1. Set up the weekly cadence:
-   ```bash
-   schedule create --cron "0 8 * * 1" --command "evolve brain"
-   schedule create --cron "0 9 * * 1" --command "run brain-ship"
-   ```
-   (Or hook into the Brain Operator plugin's schedule settings.)
-2. Skim `wiki/log.md`. Seven days of operations. The wiki has structure now.
-3. Stop reading this file. Open the brain whenever you have a thought. The compounding starts here.
+Add pages when you have something worth keeping. A wiki that grows on a schedule fills with pages nobody wrote on purpose.
 
-## Anti-patterns
+## Habits worth keeping
 
-- **Filing ten pages on day one.** The brain is supposed to compound naturally. Forced batches produce stale pages by week two.
-- **Skipping the User Context section.** Without it the LLM hedges, the tone drifts, and you'll feel like you're talking to a generic assistant instead of an operator.
-- **Never running Evolve.** The wiki ages. Without periodic audit, stale claims compound.
-- **Treating brain-ship's drafts as final.** Always review Level 1 drafts before posting. The LLM doesn't know your audience as well as you do.
+- Ask direction questions **before** filing anything about them. Once an idea is a page, it starts steering.
+- Put unfinished thinking in `wiki/_scratch/`. It is never loaded by default.
+- When an answer cites something surprising, open the Answer Trace and check whether it was read or invented.
+- Archive instead of deleting. Archived pages stay searchable but stop counting as current.
 
-## When something feels wrong
+## When something feels off
 
-- Operator drifts from your tone → strengthen the User Context section in `CLAUDE.md`
-- Operator files in the wrong category → add a one-liner to the User Context: "always file X under Y"
-- Operator is too cautious → relax the priority bands in `_common/operating-mode.md`
-- Operator doesn't understand a domain → drop more raw sources for that domain and run Ingest, don't try to teach it via prompt
-
-The brain is a long game. Most of the value compounds in months, not days.
+- Answers drift toward old projects → check `Current State.md` and the `status` frontmatter on the pages being surfaced.
+- Ideation feels recycled → that is what aperture routing exists to prevent; ask the direction question directly rather than asking the vault what to build.
+- Retrieval misses an obvious page → open the Answer Trace and look at the scope line to see whether it was withheld and why.
