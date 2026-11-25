@@ -255,7 +255,7 @@ Receipts, not launch claims:
 
 ## Brand
 
-The identity lives in [`docs/brand/`](docs/brand): the banner, the social preview and the app icon. Obsidian and amber glass; the name is set in the same dots as the vault, and the only lit dot is the one on the i.
+The identity lives in [`docs/brand/`](docs/brand): the banner, the social preview and the app icon. Midnight navy and yellow glass. The name is drawn in the same dots as the vault, and the only live dot is the one on the i.
 
 ## License
 
